@@ -113,10 +113,14 @@ public:
 
 protected:
   virtual bool contains(EntityShortId e) const = 0;
-  virtual unsigned char *getComponentRawPtr(unsigned char *data, ComponentId cid) const = 0;
   virtual void remove(EntityShortId e) = 0;
+  virtual unsigned char *getComponentRawPtr(unsigned char *data, ComponentId cid) const = 0;
+  virtual unsigned char *uncheckedGetComponentRawPtr(unsigned char *data, ComponentId cid) const = 0;
   template <typename C> inline C *getComponentPtr(unsigned char *data) const {
     return reinterpret_cast<C *>(getComponentRawPtr(data, IComponent<C>::GetId()));
+  }
+  template <typename C> inline C *uncheckedGetComponentPtr(unsigned char *data) const {
+    return reinterpret_cast<C *>(uncheckedGetComponentRawPtr(data, IComponent<C>::GetId()));
   }
   friend EntityReference;
 };
@@ -138,6 +142,10 @@ public:
   ~EntityReference() = default;
   // Returns a component of this entity by given component type.
   template <typename Component> Component &Get() { return *a->getComponentPtr<Component>(data); }
+  // UncheckedGet is similar to Get(), but won't validate column.
+  template <typename Component> Component &UncheckedGet() {
+    return *a->uncheckedGetComponentPtr<Component>(data);
+  }
   inline EntityId GetId() const { return id; }
   inline bool IsAlive(void) const { return a != nullptr && a->contains(__internal::unpack_y(id)); }
   inline void Kill() { a->remove(__internal::unpack_y(id)); }
@@ -193,6 +201,9 @@ protected:
   inline bool contains(EntityShortId e) const override { return e < ecursor && !cemetery.contains(e); }
   void remove(EntityShortId e) override;
   unsigned char *getComponentRawPtr(unsigned char *data, ComponentId cid) const override;
+  inline unsigned char *uncheckedGetComponentRawPtr(unsigned char *data, ComponentId cid) const override {
+    return data + cols[cid] * cellSize;
+  }
   // Returns the data address of entity e at column col.
   unsigned char *getEntityData(EntityShortId e) const;
   // Get EntityReference by given short entity id.
