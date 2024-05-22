@@ -23,8 +23,8 @@ TEST_CASE("cache_sort", "[custom compare]") {
 
   Query<D> q(w);
   auto cmp = [&w](const EntityId a, const EntityId b) {
-    auto xa = w.Get(a).Get<D>().x;
-    auto xb = w.Get(b).Get<D>().x;
+    auto xa = w.UncheckedGet(a).Get<D>().x;
+    auto xb = w.UncheckedGet(b).Get<D>().x;
     return xa < xb || (xa == xb && a < b);
   };
   auto c = q.PreMatch().Cache<decltype(cmp)>(cmp);
