@@ -19,11 +19,16 @@ TEST_CASE("cache_sort", "[custom compare]") {
   auto e2 = a1.NewEntity([](EntityReference &e) { e.Get<D>().x = 9; });
   auto e3 = a2.NewEntity([](EntityReference &e) { e.Get<D>().x = 3; });
   auto e4 = a3.NewEntity([](EntityReference &e) { e.Get<D>().x = 1; });
+  auto e5 = a3.NewEntity([](EntityReference &e) { e.Get<D>().x = 3; });
 
   Query<D> q(w);
-  auto cmp = [&w](const EntityId a, const EntityId b) { return w.Get(a).Get<D>().x < w.Get(b).Get<D>().x; };
+  auto cmp = [&w](const EntityId a, const EntityId b) {
+    auto xa = w.Get(a).Get<D>().x;
+    auto xb = w.Get(b).Get<D>().x;
+    return xa < xb || (xa == xb && a < b);
+  };
   auto c = q.PreMatch().Cache<decltype(cmp)>(cmp);
   std::vector<EntityId> z;
   c.ForEach([&z](EntityReference &ref) { z.push_back(ref.GetId()); });
-  REQUIRE(z == decltype(z){e4, e3, e1, e2});
+  REQUIRE(z == decltype(z){e4, e3, e5, e1, e2});
 }
