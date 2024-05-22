@@ -127,7 +127,7 @@ protected:
 
 } // namespace __internal
 
-// A temporary reference to an entity's data.
+// A temporary reference to an entity's data, it should keep lightweight enough.
 class EntityReference {
 private:
   __internal::IArchetypeEntityApi *a = nullptr;
@@ -181,7 +181,7 @@ private:
 
 // Internal Archetype interface class.
 class IArchetype : public IArchetypeEntityApi {
-protected:
+private:
   ArchetypeId id;
   EntityShortId ecursor = 0;                  // e (entity short id) cursor.
   std::unordered_set<EntityShortId> cemetery; // for recycle & liveness checks
@@ -214,13 +214,16 @@ protected:
   EntityReference &get(EntityShortId e);
   // Returns the signature of this archetype.
   inline const Signature &getSignature() const { return signature; };
+
+  friend World;   // for get, uncheckedGet, getSignature
+  friend ICacher; // for get, uncheckedGet
+
+protected:
+  // ~~~~~~~ for Archetype Impl ~~~~~~~~~~
   // Call destructors of all components of an entity by providing entity data address.
   virtual void destructComponents(unsigned char *data) = 0;
   // Call constructors of all components of an entity by providing entity data address.
   virtual void constructComponents(unsigned char *data) = 0;
-
-  friend World;   // for get, uncheckedGet, getSignature
-  friend ICacher; // for get, uncheckedGet
 
 public:
   IArchetype(ArchetypeId id, IWorld *world, size_t numComponents, size_t cellSize,
@@ -246,7 +249,6 @@ public:
   void ForEachUntil(const AccessorUntil &cb);
   inline void ForEachUntil(const AccessorUntil &&cb) { ForEachUntil(cb); }
   // Run given callback function for a given set of ordered entity short ids in this archetype.
-  // The liveness (existeness) won't be checked here.
   void ForEachUntil(const AccessorUntil &cb, const OrderedEntityShortIdSet &st);
 };
 
@@ -753,7 +755,7 @@ protected:
   TFieldIndex *__index = nullptr;
   // iterator to trackpostion in __index.
   // It may be a iterator `end()`, which indicates this entity is unbound with some world.
-  // In such situation, we sholdn't insert/updates its value to the index, and the index will neither filter
+  // In such situations, we shouldn't insert/updates its value to the index, and the index will neither filter
   // it out on queries.
   typename TFieldIndex::Iterator __it;
   FieldProxyBase &set(const Value &v) {
@@ -866,11 +868,18 @@ public:
       : world(world), archetypes(archetypes), aids(aids), filters(filters) {}
   ~ICacher() { clearCallbacks(); }
 
-  // Cache iteratation:
+  // Cache iteration ForEach methods (in-place iteration).
+  // We always guarantee the callback won't touch a dead entity.
+  // It's **undefined behavior** to create/remove entities, or update indexes associated with this
+  // cacher's in given callback. For such situations, consider to create and remove entities at frame
+  // begin or end, or just use Collect() to safely work on a copy.
   void ForEach(const Accessor &cb);
   inline void ForEach(const Accessor &&cb) { ForEach(cb); }
   inline void ForEachUntil(const AccessorUntil &cb) { forEachUntil(cb); }
   inline void ForEachUntil(const AccessorUntil &&cb) { forEachUntil(cb); }
+
+  // Copy the cached entity references into given vector.
+  void Collect(std::vector<EntityReference> &vec);
 
 protected:
   void setup(IQuery &q);
@@ -965,15 +974,22 @@ public:
   // Clears filters.
   IQuery &ClearFilters();
 
-  // Execute the query, and call given callback for each matched entity.
-  // There're 2 cases:
+  // Execute the query, and call given callback for each matched entities **in place**.
+  // Internal brief:
   // 1. If filters are provided, apply filters and then iterates matched entities for each archetype.
   // 2. Otherwise, this is a simple query just about some archetypes, for each archetype, run with
   //    all entities managed by archetypes.
+  // We always guarantee the callback won't touch a dead entity, and the iteration will eventually end.
+  // It's **undefined behavior** if the callback contains logics that creates or removes entities.
+  // For such situations, consider to create and remove entities at frame begin or end, or just
+  // use Collect() to safely work on a copy.
   void ForEach(const Accessor &cb);
   inline void ForEach(const Accessor &&cb) { ForEach(cb); }
   void ForEachUntil(const AccessorUntil &cb);
   inline void ForEachUntil(const AccessorUntil &&cb) { ForEachUntil(cb); }
+
+  // Execute the query, and copy entity reference results to given vector.
+  void Collect(std::vector<EntityReference> &vec);
 
   // Constructs a cache from this query, this will execute the query at once and
   // changes will be maintained in the cache automatically.

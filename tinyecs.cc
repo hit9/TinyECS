@@ -53,7 +53,7 @@ EntityReference &IArchetype::get(EntityShortId e) {
   return uncheckedGet(e);
 }
 
-unsigned char *IArchetype::getComponentRawPtr( unsigned char *entityData, ComponentId cid) const {
+unsigned char *IArchetype::getComponentRawPtr(unsigned char *entityData, ComponentId cid) const {
   auto col = cols[cid];
   if (col == 0xffff)
     throw std::runtime_error("tinyecs: component of archetype " + std::to_string(id) + " not found");
@@ -118,14 +118,31 @@ void IArchetype::ForEach(const Accessor &cb) {
 
 void IArchetype::ForEachUntil(const AccessorUntil &cb) {
   // It's important to scan entities in order of address layout.
-  for (EntityShortId e = 0; e < ecursor; e++)
+  // So we count the short entity id from 0 to ecursor.
+
+  // Copy the ecursor in advance as the iteration end,
+  // to avoid possible entities creations while iterating, make sure
+  // the iteration will eventually end.
+  //
+  // And it's safe to remove entities in the callback, this doesn't
+  // affect the iteration counter, and we have checked the existence
+  // for each short id before performing a UncheckedGet call.
+  auto end = ecursor;
+  for (EntityShortId e = 0; e < end; e++) {
     if (!cemetery.contains(e))
       if (cb(uncheckedGet(e))) break;
+  }
 }
 
 void IArchetype::ForEachUntil(const AccessorUntil &cb, const OrderedEntityShortIdSet &st) {
-  for (auto e : st)
-    if (cb(uncheckedGet(e))) break;
+  // The given set of entity short ids is ordered, matches the order
+  // of entities's memory addresses.
+  for (auto e : st) {
+    // Check liveness for each entity to in case of possible entity removals
+    // in the callback function.
+    if (!cemetery.contains(e))
+      if (cb(uncheckedGet(e))) break;
+  }
 }
 
 //////////////////////////
@@ -398,6 +415,13 @@ void IQuery::ForEachUntil(const AccessorUntil &cb) {
   executeWithFilters(cb);
 }
 
+void IQuery::Collect(std::vector<EntityReference> &vec) {
+  ForEachUntil([&vec](EntityReference &ref) {
+    vec.push_back(ref); // copy
+    return false;
+  });
+}
+
 //////////////////////////
 /// Cacher
 //////////////////////////
@@ -480,6 +504,13 @@ void ICacher::clearCallbacks() {
 void ICacher::ForEach(const Accessor &cb) {
   ForEachUntil([&cb](EntityReference &ref) {
     cb(ref);
+    return false;
+  });
+}
+
+void ICacher::Collect(std::vector<EntityReference> &vec) {
+  ForEachUntil([&vec](EntityReference &ref) {
+    vec.push_back(ref); // copy
     return false;
   });
 }
