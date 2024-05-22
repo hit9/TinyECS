@@ -731,10 +731,12 @@ public:
   inline const Value &GetValue() const { return value; }
   // ~~~~ API Hooks ~~~~
   // Inserts the initial value on entity construction.
+  // If call BindIndex on a field for multiple times, only the first call takes effect.
   // This function must be called inside a Component's constructor if it declares
   // a field wrapped by FieldProxy.
   void BindIndex(TFieldIndex *idx) {
     if (idx == nullptr) throw std::runtime_error("tinyecs: cannot bind nullptr index to field");
+    if (__index != nullptr) return; // idempotent
     __index = idx;
     __it = __index->Insert(value); // __it may be end()
   }
