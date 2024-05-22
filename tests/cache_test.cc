@@ -6,7 +6,7 @@
 using namespace tinyecs;
 using namespace tinyecs_tests;
 
-TEST_CASE("query_cache", "[simple]") {
+TEST_CASE("cache", "[simple]") {
   World w;
   SETUP_INDEX;
 

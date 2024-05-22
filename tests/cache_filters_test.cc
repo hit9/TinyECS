@@ -7,7 +7,7 @@
 using namespace tinyecs;
 using namespace tinyecs_tests;
 
-TEST_CASE("query_cache_filters", "[simple]") {
+TEST_CASE("cache_filters", "[simple]") {
   World w;
   SETUP_INDEX;
 

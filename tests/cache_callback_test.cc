@@ -7,7 +7,7 @@
 using namespace tinyecs;
 using namespace tinyecs_tests;
 
-TEST_CASE("query_cache_callback", "[callback registeration and removal]") {
+TEST_CASE("cache_callback", "[callback registeration and removal]") {
   World w;
   SETUP_INDEX;
 
