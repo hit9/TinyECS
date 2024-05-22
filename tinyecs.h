@@ -126,17 +126,10 @@ protected:
 // A temporary reference to an entity's data.
 class EntityReference {
 private:
+  __internal::IArchetypeEntityApi *a = nullptr;
+  // Internal note: we can't use pointer this instead of data, since we allow copy a reference.
   unsigned char *data = nullptr;
   EntityId id = 0;
-  __internal::IArchetypeEntityApi *a = nullptr;
-
-  explicit EntityReference(__internal::IArchetypeEntityApi *a) : a(a) {}
-  inline void reset(unsigned char *dat, EntityId i) { data = dat, id = i; }
-  inline void reset(__internal::IArchetypeEntityApi *arch, unsigned char *dat, EntityId i) {
-    a = arch, data = dat, id = i;
-  }
-
-  friend __internal::IArchetype; // for reset
 
 public:
   EntityReference(__internal::IArchetypeEntityApi *a, unsigned char *data, EntityId id)
@@ -149,7 +142,7 @@ public:
   inline bool IsAlive(void) const { return a != nullptr && a->contains(__internal::unpack_y(id)); }
   inline void Kill() { a->remove(__internal::unpack_y(id)); }
   inline ArchetypeId GetArchetypeId() const { return a->GetId(); }
-  bool operator==(const EntityReference &o) const { return a == o.a && data == o.data; }
+  bool operator==(const EntityReference &o) const { return data == o.data; }
 };
 
 // Accessor is a function to access an entity via an entity reference.
@@ -190,25 +183,24 @@ protected:
   // Max memory usage estimate in a world:
   // N(archetypes) x N(components) * sizeof(uint16_t) = 4096 * 128 * 2 = 1MB
   uint16_t cols[MaxNumComponents];
+  // Block row layout:  | EntityReference | Component A | Component B ...
   std::vector<std::unique_ptr<unsigned char[]>> blocks;
   static const size_t numRows = MaxNumEntitiesPerBlock;
-  const size_t numCols, cellSize, blockSize;
+  const size_t numCols, cellSize, rowSize, blockSize;
   IWorld *world = nullptr;
 
   // Implements IArchetypeEntityApi
   inline bool contains(EntityShortId e) const override { return e < ecursor && !cemetery.contains(e); }
   void remove(EntityShortId e) override;
   unsigned char *getComponentRawPtr(unsigned char *data, ComponentId cid) const override;
-  // Creates a new entity, recycle at first, otherwise increases internal entity short id.
-  EntityId newEntity(EntityReference *ref);
   // Returns the data address of entity e at column col.
   unsigned char *getEntityData(EntityShortId e) const;
-  // Get EntityReference by given entity id.
-  inline void uncheckedGet(EntityReference &ref, EntityShortId e) {
-    ref.reset(this, getEntityData(e), pack(id, e));
+  // Get EntityReference by given short entity id.
+  inline EntityReference &uncheckedGet(EntityShortId e) {
+    return *reinterpret_cast<EntityReference *>(getEntityData(e));
   }
-  // Fill target entity reference in place.
-  void get(EntityReference &ref, EntityShortId e);
+  // Returns a reference to target entity by given short entity id.
+  EntityReference &get(EntityShortId e);
   // Returns the signature of this archetype.
   inline const Signature &getSignature() const { return signature; };
   // Call destructors of all components of an entity by providing entity data address.
@@ -220,7 +212,8 @@ protected:
   friend ICacher; // for get, uncheckedGet
 
 public:
-  IArchetype(ArchetypeId id, IWorld *world, size_t numCols, size_t cellSize, const Signature &signature);
+  IArchetype(ArchetypeId id, IWorld *world, size_t numComponents, size_t cellSize,
+             const Signature &signature);
   virtual ~IArchetype() {}
   IArchetype(const IArchetype &o) = delete;
   IArchetype &operator=(const IArchetype &o) = delete;
@@ -231,6 +224,8 @@ public:
   inline size_t NumEntities() const { return ecursor - cemetery.size(); }
   // Returns the block size.
   inline size_t BlockSize() const { return blockSize; }
+  // Creates a new entity, recycle at first, otherwise increases internal entity short id.
+  EntityReference &NewEntity();
   // Run given callback function for all alive entities in this archetype.
   void ForEach(const Accessor &cb);
   // ForEach is allowed to pass in a temporary function.
@@ -288,19 +283,7 @@ private:
 template <typename... Components> class Archetype : public __internal::IArchetype {
 public:
   Archetype(ArchetypeId id, __internal::IWorld *w)
-      : __internal::IArchetype(id, w, CS::N, CS::MaxComponentSize, CS::GetSignature()) {}
-  // Creates a new entity of this archetype, returns the entity id.
-  inline EntityId NewEntity() { return newEntity(nullptr); }
-  // Creates a new entity of this archetype, and fill the given reference inplace with the entity data.
-  inline EntityId NewEntity(EntityReference &ref) { return newEntity(&ref); }
-  // Creates a new entity and then call given accessor.
-  EntityId NewEntity(const Accessor &cb) {
-    EntityReference ref;
-    auto eid = newEntity(&ref);
-    cb(ref);
-    return eid;
-  }
-  inline EntityId NewEntity(const Accessor &&cb) { return NewEntity(cb); }
+      : __internal::IArchetype(id, w, CS::N, CellSize, CS::GetSignature()) {}
 
 protected:
   void destructComponents(unsigned char *data) override { (destructComponent<Components>(data), ...); }
@@ -309,6 +292,7 @@ protected:
 private:
   using CS = __internal::ComponentSequence<Components...>;
   static_assert(CS::N, "tinyecs: Archetype requires at least one component type parameter");
+  static constexpr size_t CellSize = std::max(CS::MaxComponentSize, sizeof(EntityReference));
   template <typename C> void destructComponent(unsigned char *data) { getComponentPtr<C>(data)->~C(); }
   template <typename C> void constructComponent(unsigned char *data) { new (getComponentPtr<C>(data)) C(); }
 };
@@ -346,18 +330,12 @@ public:
   [[nodiscard]] bool IsAlive(EntityId eid) const;
   // Kill an entity by id.
   void Kill(EntityId eid);
-  // Get an entity by id, access the target entity via given function.
-  void Get(EntityId eid, const Accessor &cb);
-  inline void Get(EntityId eid, const Accessor &&cb) { return Get(eid, cb); }
-  // Unchecked version of method Get(), ensure the given entity is still alive.
-  void UncheckedGet(EntityId eid, const Accessor &cb);
-  inline void UncheckedGet(EntityId eid, const Accessor &&cb) { return UncheckedGet(eid, cb); }
-  // Returns an entity reference by entity id.
-  // Returns an entity with IsAlive() == false, if given entity does not exist.
-  [[nodiscard]] EntityReference Get(EntityId eid) const;
-  // Unchecked version of method Get(), ensure the given entity is still alive.
+  // Returns the reference to an entity by entity id.
+  // Returns the NullEntityReference if given entity does not exist, of which method IsAlive() == false,
+  [[nodiscard]] EntityReference &Get(EntityId eid) const;
+  // Unchecked version of method Get(), user should ensure the given entity is still alive.
   // Undefined behavior if given entity does not exist.
-  [[nodiscard]] EntityReference UncheckedGet(EntityId eid) const;
+  [[nodiscard]] EntityReference &UncheckedGet(EntityId eid) const;
   // Register a callback function to be called right after an entity associated with given
   // components is created.
   template <typename... Components> uint32_t AfterEntityCreated(CallbackAfterEntityCreated &cb) {
@@ -380,9 +358,6 @@ protected:
 private:
   std::vector<std::unique_ptr<__internal::IArchetype>> archetypes;
   std::unique_ptr<__internal::Matcher> matcher;
-
-  void get(EntityId eid, EntityReference &ref) const;
-  void uncheckedGet(EntityId eid, EntityReference &ref) const;
 
   /// ~~~~~~~~~~ Callback ~~~~~~~~~~~~~~~~~
   struct Callback {

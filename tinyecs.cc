@@ -30,52 +30,54 @@ void IWorld::setLastCreatedEntityId(EntityId eid) {
   lastCreatedEntityIdSet = true;
 }
 
-IArchetype::IArchetype(ArchetypeId id, IWorld *world, size_t numCols, size_t cellSize,
+IArchetype::IArchetype(ArchetypeId id, IWorld *world, size_t numComponents, size_t cellSize,
                        const Signature &signature)
-    : id(id), world(world), numCols(numCols), cellSize(cellSize), blockSize(numRows * numCols * cellSize),
-      signature(signature) {
+    : id(id), world(world), numCols(numComponents + 1), cellSize(cellSize), rowSize(numCols * cellSize),
+      blockSize(numRows * rowSize), signature(signature) {
   // 0xffff means a invalid column.
   std::fill_n(cols, MaxNumComponents, 0xffff);
-  int col = 0;
+  // col starts from 1, skipping the seat of entity reference
+  int col = 1;
   for (int i = 0; i < MaxNumComponents; i++)
     if (signature[i]) cols[i] = col++;
 }
 
 unsigned char *IArchetype::getEntityData(EntityShortId e) const {
-  auto block = blocks[e / numRows].get();
-  return block + (e % numRows) * numCols * cellSize;
+  auto i = e / numRows, j = e % numRows;
+  auto block = blocks[i].get();
+  return block + j * rowSize;
 }
 
-void IArchetype::get(EntityReference &ref, EntityShortId e) {
-  if (!contains(e)) {
-    ref = NullEntityReference;
-    return;
-  }
-  uncheckedGet(ref, e);
+EntityReference &IArchetype::get(EntityShortId e) {
+  if (!contains(e)) return NullEntityReference;
+  return uncheckedGet(e);
 }
 
-unsigned char *IArchetype::getComponentRawPtr(unsigned char *entityData, ComponentId cid) const {
+unsigned char *IArchetype::getComponentRawPtr( unsigned char *entityData, ComponentId cid) const {
   auto col = cols[cid];
   if (col == 0xffff)
     throw std::runtime_error("tinyecs: component of archetype " + std::to_string(id) + " not found");
   return entityData + col * cellSize;
 }
 
-// Creates a new entity, if a reference pointer provided, fill the data inplace into it.
+// Creates a new entity, returns the entity reference.
 // If cemetery contains dead entity ids, recycle it at first.
 // Otherwise, increase the cursor to occupy a new entity short id and data row.
 // If the data row exceeds the total size of blocks, then creates a new block.
-EntityId IArchetype::newEntity(EntityReference *ref) {
+EntityReference &IArchetype::NewEntity() {
   EntityShortId e;
   unsigned char *data;
-  if (cemetery.size()) { // Recycle
+
+  if (cemetery.size()) {
+    // Reuse dead entity ids.
     // Possible improvements todo: use ordered set for cemetery,
     // to recycle oldest deaded firstly.
     e = *cemetery.begin();
     cemetery.erase(e);
     data = getEntityData(e);
-    std::fill_n(data, numCols * cellSize, 0);
-  } else { // Increase
+    std::fill_n(data, rowSize, 0);
+  } else {
+    // Increase the entity id cursor.
     e = ecursor++;
     if (e >= numRows * blocks.size()) { // Allocate block if not enough
       blocks.push_back(std::make_unique<unsigned char[]>(blockSize));
@@ -83,21 +85,27 @@ EntityId IArchetype::newEntity(EntityReference *ref) {
     }
     data = getEntityData(e);
   }
-  // Call constructors
   auto eid = pack(id, e);
+  // Constructs the entity reference.
+  auto ptr = new (data) EntityReference(this, data, eid);
+  // Call constructors for each component,
   world->setLastCreatedEntityId(eid);
   constructComponents(data);
+  // After created
   world->clearLastCreatedEntityId();
-  world->afterEntityCreated(id, e); // after created
-  if (ref != nullptr) ref->reset(this, data, eid);
-  return eid;
+  world->afterEntityCreated(id, e);
+  return *ptr;
 }
 
 void IArchetype::remove(EntityShortId e) {
   if (e >= ecursor) return;
   auto data = getEntityData(e);
-  world->beforeEntityRemoved(id, e); // before removing
+  // Before removing hook.
+  world->beforeEntityRemoved(id, e);
+  // Call destructor of each component.
   destructComponents(data);
+  // Call destructor of EntityReference.
+  reinterpret_cast<EntityReference *>(data)->~EntityReference();
   cemetery.insert(e);
 }
 
@@ -110,20 +118,14 @@ void IArchetype::ForEach(const Accessor &cb) {
 
 void IArchetype::ForEachUntil(const AccessorUntil &cb) {
   // It's important to scan entities in order of address layout.
-  EntityReference ref(const_cast<IArchetype *>(this));
   for (EntityShortId e = 0; e < ecursor; e++)
-    if (!cemetery.contains(e)) {
-      uncheckedGet(ref, e);
-      if (cb(ref)) break;
-    }
+    if (!cemetery.contains(e))
+      if (cb(uncheckedGet(e))) break;
 }
 
 void IArchetype::ForEachUntil(const AccessorUntil &cb, const OrderedEntityShortIdSet &st) {
-  EntityReference ref(const_cast<IArchetype *>(this));
-  for (auto e : st) {
-    uncheckedGet(ref, e);
-    if (cb(ref)) break;
-  }
+  for (auto e : st)
+    if (cb(uncheckedGet(e))) break;
 }
 
 //////////////////////////
@@ -200,44 +202,17 @@ void World::Kill(EntityId eid) {
   archetypes[aid]->remove(__internal::unpack_y(eid));
 }
 
-void World::get(EntityId eid, EntityReference &ref) const {
+EntityReference &World::Get(EntityId eid) const {
   auto aid = __internal::unpack_x(eid);
-  if (aid >= archetypes.size()) {
-    ref = __internal::NullEntityReference;
-    return;
-  }
+  if (aid >= archetypes.size()) return __internal::NullEntityReference;
   auto &a = archetypes[aid];
-  a->get(ref, __internal::unpack_y(eid));
+  return a->get(__internal::unpack_y(eid));
 }
 
-void World::uncheckedGet(EntityId eid, EntityReference &ref) const {
+EntityReference &World::UncheckedGet(EntityId eid) const {
   auto aid = __internal::unpack_x(eid);
   auto &a = archetypes[aid];
-  a->uncheckedGet(ref, __internal::unpack_y(eid));
-}
-
-void World::Get(EntityId eid, const Accessor &cb) {
-  EntityReference ref;
-  get(eid, ref);
-  cb(ref);
-}
-
-void World::UncheckedGet(EntityId eid, const Accessor &cb) {
-  EntityReference ref;
-  uncheckedGet(eid, ref);
-  cb(ref);
-}
-
-EntityReference World::Get(EntityId eid) const {
-  EntityReference ref;
-  get(eid, ref);
-  return ref;
-}
-
-EntityReference World::UncheckedGet(EntityId eid) const {
-  EntityReference ref;
-  uncheckedGet(eid, ref);
-  return ref;
+  return a->uncheckedGet(__internal::unpack_y(eid));
 }
 
 void World::RemoveCallback(uint32_t id) {
@@ -261,11 +236,9 @@ uint32_t World::pushCallback(int flag, const __internal::AIdsPtr aids, const Cal
 }
 
 void World::triggerCallbacks(ArchetypeId aid, EntityShortId e, int flag) {
-  EntityReference ref;
   for (const auto *cb : callbackTable[flag][aid]) {
     auto a = archetypes[aid].get();
-    a->uncheckedGet(ref, e);
-    cb->func(ref);
+    cb->func(a->uncheckedGet(e));
   }
 }
 
@@ -478,11 +451,11 @@ void ICacher::setupCallbacksWatchingIndexes() {
     // Because there may be some other filters dismatches this entity.
     if (testFiltersSingleEntityId(filters, eid)) {
       // Match, inserts a new reference
-      EntityReference ref;
       auto a = it->second; // *IArchetype
-      a->uncheckedGet(ref, __internal::unpack_y(eid));
-      this->insert(eid, ref); // copy
-    } else                    // Miss, remove
+
+      // Copy into cache container.
+      this->insert(eid, a->uncheckedGet(__internal::unpack_y(eid)));
+    } else // Miss, remove
       this->erase(eid);
   };
 

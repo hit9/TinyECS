@@ -15,8 +15,8 @@ TEST_CASE("query_filters_bool") {
   auto e1 = a1.NewEntity();
   auto e2 = a1.NewEntity();
 
-  w.Get(e1).Get<G>().isX = false;
-  w.Get(e2).Get<G>().isX = true;
+  e1.Get<G>().isX = false;
+  e2.Get<G>().isX = true;
 
   Query<G> q1(w, {index6 == true});
   q1.PreMatch();
@@ -26,7 +26,7 @@ TEST_CASE("query_filters_bool") {
     REQUIRE(e.Get<G>().isX);
     m1.insert(e.GetId());
   });
-  REQUIRE(m1 == decltype(m1){e2});
+  REQUIRE(m1 == decltype(m1){e2.GetId()});
 
   Query<G> q2(w, {index6 != true});
   q2.PreMatch();
@@ -36,5 +36,5 @@ TEST_CASE("query_filters_bool") {
     REQUIRE(!e.Get<G>().isX);
     m2.insert(e.GetId());
   });
-  REQUIRE(m2 == decltype(m2){e1});
+  REQUIRE(m2 == decltype(m2){e1.GetId()});
 }

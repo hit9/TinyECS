@@ -20,17 +20,17 @@ TEST_CASE("cache", "[simple]") {
   auto e3 = a3.NewEntity();
   auto e4 = a4.NewEntity();
 
-  w.Get(e1).Get<A>().x = -3;
-  w.Get(e1).Get<A>().y = 18;
+  e1.Get<A>().x = -3;
+  e1.Get<A>().y = 18;
 
-  w.Get(e2).Get<B>().s = "xyz";
+  e2.Get<B>().s = "xyz";
 
-  w.Get(e3).Get<A>().x = 4;
-  w.Get(e3).Get<A>().y = 19;
-  w.Get(e3).Get<D>().x = 1233;
+  e3.Get<A>().x = 4;
+  e3.Get<A>().y = 19;
+  e3.Get<D>().x = 1233;
 
-  w.Get(e4).Get<B>().s = "xyz";
-  w.Get(e4).Get<D>().x = 1222;
+  e4.Get<B>().s = "xyz";
+  e4.Get<D>().x = 1222;
 
   Query<A> q1(w);                      // e1, e3
   Query<D> q2(w);                      // e3, e4
@@ -44,9 +44,9 @@ TEST_CASE("cache", "[simple]") {
   q2.ForEach([&m2](EntityReference &e) { m2.insert(e.GetId()); });
   q3.ForEach([&m3](EntityReference &e) { m3.insert(e.GetId()); });
   q4.ForEach([&m4](EntityReference &e) { m4.insert(e.GetId()); });
-  REQUIRE(m1 == decltype(m1){e1, e3});
-  REQUIRE(m2 == decltype(m2){e3, e4});
-  REQUIRE(m3 == decltype(m3){e4});
+  REQUIRE(m1 == decltype(m1){e1.GetId(), e3.GetId()});
+  REQUIRE(m2 == decltype(m2){e3.GetId(), e4.GetId()});
+  REQUIRE(m3 == decltype(m3){e4.GetId()});
   REQUIRE(m4 == decltype(m4){});
 
   auto cache1 = q1.Cache();
@@ -67,7 +67,7 @@ TEST_CASE("cache", "[simple]") {
   REQUIRE(m4 == c4);
 
   // kill e3;
-  w.Kill(e3);
+  e3.Kill();
 
   std::unordered_set<EntityId> d1, // e1
       d2,                          // e4
@@ -78,9 +78,9 @@ TEST_CASE("cache", "[simple]") {
   cache3.ForEach([&d3](EntityReference &e) { d3.insert(e.GetId()); });
   cache4.ForEach([&d4](EntityReference &e) { d4.insert(e.GetId()); });
 
-  REQUIRE(d1 == decltype(d1){e1});
-  REQUIRE(d2 == decltype(d2){e4});
-  REQUIRE(d3 == decltype(d3){e4});
+  REQUIRE(d1 == decltype(d1){e1.GetId()});
+  REQUIRE(d2 == decltype(d2){e4.GetId()});
+  REQUIRE(d3 == decltype(d3){e4.GetId()});
   REQUIRE(d4 == decltype(d4){});
 
   // add e5, matches q2, q3
@@ -94,15 +94,15 @@ TEST_CASE("cache", "[simple]") {
   cache2.ForEach([&f2](EntityReference &e) { f2.insert(e.GetId()); });
   cache3.ForEach([&f3](EntityReference &e) { f3.insert(e.GetId()); });
   cache4.ForEach([&f4](EntityReference &e) { f4.insert(e.GetId()); });
-  REQUIRE(f1 == decltype(f1){e1});
-  REQUIRE(f2 == decltype(f2){e4, e5});
-  REQUIRE(f3 == decltype(f3){e4, e5});
+  REQUIRE(f1 == decltype(f1){e1.GetId()});
+  REQUIRE(f2 == decltype(f2){e4.GetId(), e5.GetId()});
+  REQUIRE(f3 == decltype(f3){e4.GetId(), e5.GetId()});
   REQUIRE(f4 == decltype(f4){});
 
   // update e4.x => 1223, creates e6
-  w.Get(e4).Get<D>().x = 1223;
+  e4.Get<D>().x = 1223;
   auto e6 = a3.NewEntity(); // matches, q1,q2 q3,q4
-  w.Get(e6).Get<D>().x = 1000;
+  e6.Get<D>().x = 1000;
 
   std::unordered_set<EntityId> g1, // e1
       g2,                          // e4, e5
@@ -112,8 +112,8 @@ TEST_CASE("cache", "[simple]") {
   cache2.ForEach([&g2](EntityReference &e) { g2.insert(e.GetId()); });
   cache3.ForEach([&g3](EntityReference &e) { g3.insert(e.GetId()); });
   cache4.ForEach([&g4](EntityReference &e) { g4.insert(e.GetId()); });
-  REQUIRE(g1 == decltype(g1){e1, e6});
-  REQUIRE(g2 == decltype(g2){e4, e5, e6});
-  REQUIRE(g3 == decltype(g3){e6, e5});
-  REQUIRE(g4 == decltype(g4){e6});
+  REQUIRE(g1 == decltype(g1){e1.GetId(), e6.GetId()});
+  REQUIRE(g2 == decltype(g2){e4.GetId(), e5.GetId(), e6.GetId()});
+  REQUIRE(g3 == decltype(g3){e6.GetId(), e5.GetId()});
+  REQUIRE(g4 == decltype(g4){e6.GetId()});
 }

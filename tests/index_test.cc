@@ -39,5 +39,5 @@ TEST_CASE("index/4", "[unbound fined: write entity should throw]") {
   SETUP_INDEX;
   auto &a = w.NewArchetype<X>();
   auto e = a.NewEntity();
-  REQUIRE_THROWS_AS(w.Get(e).Get<X>().x = 1, std::runtime_error);
+  REQUIRE_THROWS_AS(e.Get<X>().x = 1, std::runtime_error);
 }

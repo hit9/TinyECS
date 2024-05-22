@@ -14,13 +14,13 @@ TEST_CASE("query_filters/1", "[simple]") {
   auto &a1 = w.NewArchetype<D>();
 
   auto e1 = a1.NewEntity();
-  w.Get(e1).Get<D>().x = 1;
+  e1.Get<D>().x = 1;
   Query<D> q1(w, {index1 == 1});
   q1.PreMatch();
 
   int cnt = 0;
   Accessor cb1 = [&](EntityReference &e) {
-    REQUIRE(e.GetId() == e1);
+    REQUIRE(e.GetId() == e1.GetId());
     REQUIRE(e.Get<D>().x == 1);
     cnt++;
   };
@@ -28,13 +28,13 @@ TEST_CASE("query_filters/1", "[simple]") {
   q1.ForEach(cb1);
   REQUIRE(cnt == 1);
 
-  REQUIRE(w.Get(e1).IsAlive());
+  REQUIRE(e1.IsAlive());
 
-  w.Kill(e1);
+  e1.Kill();
   cnt = 0;
   q1.ForEach(cb1);
   REQUIRE(cnt == 0);
-  REQUIRE(!w.Get(e1).IsAlive());
+  REQUIRE(!e1.IsAlive());
 }
 
 TEST_CASE("query_filters/2", "[multiple index]") {
@@ -51,18 +51,18 @@ TEST_CASE("query_filters/2", "[multiple index]") {
   auto e4 = a2.NewEntity();
   auto e5 = a3.NewEntity();
 
-  w.Get(e1).Get<D>().x = 3;
+  e1.Get<D>().x = 3;
 
-  w.Get(e2).Get<D>().x = 9;
+  e2.Get<D>().x = 9;
 
-  w.Get(e3).Get<E>().x = 3;
-  w.Get(e3).Get<E>().z = std::string("edf");
+  e3.Get<E>().x = 3;
+  e3.Get<E>().z = std::string("edf");
 
-  w.Get(e4).Get<E>().x = 12;
+  e4.Get<E>().x = 12;
 
-  w.Get(e5).Get<D>().x = 3;
-  w.Get(e5).Get<E>().x = 19;
-  w.Get(e5).Get<E>().z = std::string("edf");
+  e5.Get<D>().x = 3;
+  e5.Get<E>().x = 19;
+  e5.Get<E>().z = std::string("edf");
 
   //////// query x==3
   Query<D> q1(w, {index1 == 3});
@@ -73,7 +73,7 @@ TEST_CASE("query_filters/2", "[multiple index]") {
     REQUIRE(e.Get<D>().x == 3);
     m1.insert(e.GetId());
   });
-  REQUIRE(m1 == decltype(m1){e1, e5});
+  REQUIRE(m1 == decltype(m1){e1.GetId(), e5.GetId()});
 
   //////// query z==edf
   Query<E> q2(w, {index2 == "edf"});
@@ -84,7 +84,7 @@ TEST_CASE("query_filters/2", "[multiple index]") {
     REQUIRE(e.Get<E>().z == "edf");
     m2.insert(e.GetId());
   });
-  REQUIRE(m2 == decltype(m2){e3, e5});
+  REQUIRE(m2 == decltype(m2){e3.GetId(), e5.GetId()});
 
   //////// query z==edf && x==3
   Query<D, E> q3(w, {index1 == 3, index2 == "edf"});
@@ -96,10 +96,10 @@ TEST_CASE("query_filters/2", "[multiple index]") {
     REQUIRE(e.Get<E>().z == "edf");
     m3.insert(e.GetId());
   });
-  REQUIRE(m3 == decltype(m3){e5});
+  REQUIRE(m3 == decltype(m3){e5.GetId()});
 
   //////// update e5.x and recheck query x==3
-  w.Get(e5).Get<D>().x = 1;
+  e5.Get<D>().x = 1;
   std::unordered_set<EntityId> m4;
   Query<D> q4(w, {index1 == 3});
   q4.PreMatch();
@@ -108,10 +108,10 @@ TEST_CASE("query_filters/2", "[multiple index]") {
     REQUIRE(e.Get<D>().x == 3);
     m4.insert(e.GetId());
   });
-  REQUIRE(m4 == decltype(m4){e1});
+  REQUIRE(m4 == decltype(m4){e1.GetId()});
 
   //////// update e5.z and recheck query z=="edf"
-  w.Get(e5).Get<E>().z += "hellowold";
+  e5.Get<E>().z += "hellowold";
   std::unordered_set<EntityId> m5;
   Query<E> q5(w, {index2 == "edf"});
   q5.PreMatch();
@@ -120,7 +120,7 @@ TEST_CASE("query_filters/2", "[multiple index]") {
     REQUIRE(e.Get<E>().z == "edf");
     m5.insert(e.GetId());
   });
-  REQUIRE(m5 == decltype(m5){e3});
+  REQUIRE(m5 == decltype(m5){e3.GetId()});
 
   //////// query x < 17
   std::unordered_set<EntityId> m6;
@@ -131,7 +131,7 @@ TEST_CASE("query_filters/2", "[multiple index]") {
     REQUIRE(e.Get<E>().x < 17);
     m6.insert(e.GetId());
   });
-  REQUIRE(m6 == decltype(m6){e3, e4});
+  REQUIRE(m6 == decltype(m6){e3.GetId(), e4.GetId()});
 
   //////// query E.x >=12 && z != abc
   std::unordered_set<EntityId> m7;
@@ -143,5 +143,5 @@ TEST_CASE("query_filters/2", "[multiple index]") {
     REQUIRE(e.Get<E>().z != "abc");
     m7.insert(e.GetId());
   });
-  REQUIRE(m7 == decltype(m7){e5});
+  REQUIRE(m7 == decltype(m7){e5.GetId()});
 }

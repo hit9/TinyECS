@@ -30,17 +30,17 @@ TEST_CASE("query_filters_enum") {
     REQUIRE(e.Get<F>().status == Status::S1);
     m1.insert(e.GetId());
   });
-  REQUIRE(m1 == decltype(m1){e2, e3});
+  REQUIRE(m1 == decltype(m1){e2.GetId(), e3.GetId()});
 
   // query status == s2 &&  x > 100
-  w.Get(e2).Get<F>().status = Status::S2;
-  w.Get(e3).Get<F>().status = Status::S2;
-  w.Get(e3).Get<D>().x = 9999;
+  e2.Get<F>().status = Status::S2;
+  e3.Get<F>().status = Status::S2;
+  e3.Get<D>().x = 9999;
   auto e4 = a3.NewEntity();
   auto e5 = a3.NewEntity();
-  w.Get(e4).Get<D>().x = 3999;
-  w.Get(e5).Get<D>().x = 3999;
-  w.Get(e5).Get<F>().status = Status::S2;
+  e4.Get<D>().x = 3999;
+  e5.Get<D>().x = 3999;
+  e5.Get<F>().status = Status::S2;
 
   Query<F> q2(w, {index5 == Status::S2, index1 > 100});
   q2.PreMatch();
@@ -51,5 +51,5 @@ TEST_CASE("query_filters_enum") {
     REQUIRE(e.Get<D>().x > 100);
     m2.insert(e.GetId());
   });
-  REQUIRE(m2 == decltype(m2){e3, e5});
+  REQUIRE(m2 == decltype(m2){e3.GetId(), e5.GetId()});
 }

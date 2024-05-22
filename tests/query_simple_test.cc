@@ -24,19 +24,19 @@ TEST_CASE("query_simple", "[simple]") {
   q1.PreMatch();
   std::unordered_set<EntityId> m1;
   q1.ForEach([&](EntityReference &e) { m1.insert(e.GetId()); });
-  REQUIRE(m1 == decltype(m1){e1, e2, e3});
+  REQUIRE(m1 == decltype(m1){e1.GetId(), e2.GetId(), e3.GetId()});
 
   Query<B> q2(w);
   q2.PreMatch();
   std::unordered_set<EntityId> m2;
   q2.ForEach([&](EntityReference &e) { m2.insert(e.GetId()); });
-  REQUIRE(m2 == decltype(m2){e1, e2, e4});
+  REQUIRE(m2 == decltype(m2){e1.GetId(), e2.GetId(), e4.GetId()});
 
   QueryAny<C> q3(w);
   q3.PreMatch();
   std::unordered_set<EntityId> m3;
   q3.ForEach([&](EntityReference &e) { m3.insert(e.GetId()); });
-  REQUIRE(m3 == decltype(m3){e3, e4});
+  REQUIRE(m3 == decltype(m3){e3.GetId(), e4.GetId()});
 
   QueryNone<A, C> q4(w);
   q4.PreMatch();
@@ -48,12 +48,12 @@ TEST_CASE("query_simple", "[simple]") {
   q5.PreMatch();
   std::unordered_set<EntityId> m5;
   q5.ForEach([&](EntityReference &e) { m5.insert(e.GetId()); });
-  REQUIRE(m5 == decltype(m5){e1, e2, e3, e4});
+  REQUIRE(m5 == decltype(m5){e1.GetId(), e2.GetId(), e3.GetId(), e4.GetId()});
 
-  w.Kill(e1);
+  w.Kill(e1.GetId());
   Query<A> q6(w);
   q6.PreMatch();
   std::unordered_set<EntityId> m6;
   q6.ForEach([&](EntityReference &e) { m6.insert(e.GetId()); });
-  REQUIRE(m6 == decltype(m1){e2, e3});
+  REQUIRE(m6 == decltype(m1){e2.GetId(), e3.GetId()});
 }

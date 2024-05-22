@@ -24,18 +24,18 @@ TEST_CASE("query_filters_operator_in") {
   auto e4 = a4.NewEntity();
   auto e5 = a5.NewEntity();
 
-  w.Get(e1).Get<E>().z = "efg";
-  w.Get(e2).Get<F>().status = Status::S2;
-  w.Get(e3).Get<H>().h = "xyz";
+  e1.Get<E>().z = "efg";
+  e2.Get<F>().status = Status::S2;
+  e3.Get<H>().h = "xyz";
 
-  w.Get(e4).Get<E>().x = 1;
-  w.Get(e4).Get<E>().z = "efg";
-  w.Get(e4).Get<F>().status = Status::S2;
+  e4.Get<E>().x = 1;
+  e4.Get<E>().z = "efg";
+  e4.Get<F>().status = Status::S2;
 
-  w.Get(e5).Get<E>().x = 2;
-  w.Get(e5).Get<E>().z = "efg1111";
-  w.Get(e5).Get<F>().status = Status::S3;
-  w.Get(e5).Get<H>().h = "xyz";
+  e5.Get<E>().x = 2;
+  e5.Get<E>().z = "efg1111";
+  e5.Get<F>().status = Status::S3;
+  e5.Get<H>().h = "xyz";
 
   // query E.z in {efg}
   Query<E> q1(w, {index2.In({"efg"})});
@@ -46,7 +46,7 @@ TEST_CASE("query_filters_operator_in") {
     REQUIRE(e.Get<E>().z == "efg");
     m1.insert(e.GetId());
   });
-  REQUIRE(m1 == decltype(m1){e1, e4});
+  REQUIRE(m1 == decltype(m1){e1.GetId(), e4.GetId()});
 
   // query  F.status in {S2}
   Query<F> q2(w, {index5.In({Status::S2})});
@@ -57,7 +57,7 @@ TEST_CASE("query_filters_operator_in") {
     REQUIRE(e.Get<F>().status == Status::S2);
     m2.insert(e.GetId());
   });
-  REQUIRE(m2 == decltype(m2){e2, e4});
+  REQUIRE(m2 == decltype(m2){e2.GetId(), e4.GetId()});
 
   // query E.z in {efg} && F.status in {S2}
   Query<F> q3(w, {index2.In({"efg"}), index5.In({Status::S2})});
@@ -69,5 +69,5 @@ TEST_CASE("query_filters_operator_in") {
     REQUIRE(e.Get<F>().status == Status::S2);
     m3.insert(e.GetId());
   });
-  REQUIRE(m3 == decltype(m3){e4});
+  REQUIRE(m3 == decltype(m3){e4.GetId()});
 }

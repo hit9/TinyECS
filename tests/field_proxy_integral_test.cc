@@ -11,17 +11,14 @@ TEST_CASE("fieldproxy-integeral/2", "[test integeral operators]") {
   SETUP_INDEX;
 
   auto &a = w.NewArchetype<D>();
-  auto eid = a.NewEntity();
-  auto did = a.NewEntity();
+  auto e = a.NewEntity();
+  auto d = a.NewEntity();
 
-  w.Get(eid).Get<D>().x = 1;
-  w.Get(eid).Get<D>().x += 1; // 2
+  e.Get<D>().x = 1;
+  e.Get<D>().x += 1; // 2
 
-  w.Get(did).Get<D>().x = 1;
-  w.Get(did).Get<D>().x += 3; // 4
-
-  auto e = w.Get(eid);
-  auto d = w.Get(did);
+  d.Get<D>().x = 1;
+  d.Get<D>().x += 3; // 4
 
   REQUIRE(!e.Get<D>().x == false);
   REQUIRE(e.Get<D>().x < 3);

@@ -12,13 +12,16 @@ TEST_CASE("archetype/1", "[simple]") {
   World w;
   auto &a = w.NewArchetype<A, B>();
   REQUIRE(a.GetId() == 0);
-  REQUIRE(a.BlockSize() == 2 * MaxNumEntitiesPerBlock * std::max(sizeof(A), sizeof(B)));
+  REQUIRE(a.BlockSize() ==
+          (2 + 1) * MaxNumEntitiesPerBlock * std::max({sizeof(A), sizeof(B), sizeof(EntityReference)}));
 
-  auto eid = a.NewEntity();
+  auto &ref = a.NewEntity();
+  auto eid = ref.GetId();
 
   REQUIRE(__internal::unpack_x(eid) == a.GetId());
   REQUIRE(__internal::unpack_y(eid) == 0);
 
+  REQUIRE(ref.IsAlive());
   REQUIRE(w.IsAlive(eid));
   REQUIRE(!w.IsAlive(12301));
 
@@ -54,8 +57,8 @@ TEST_CASE("archetype/1", "[simple]") {
   REQUIRE(cnt == 0);
   REQUIRE(cnt == a.NumEntities());
 
-  REQUIRE(a.NewEntity() == eid); // recycle
-  w.Get(eid).Get<A>().x = 0;     // back to default value
+  REQUIRE(a.NewEntity().GetId() == eid); // recycle
+  w.Get(eid).Get<A>().x = 0;             // back to default value
 }
 
 TEST_CASE("archetype/2", "[allocate new block]") {
@@ -73,11 +76,11 @@ TEST_CASE("archetype/2", "[allocate new block]") {
 TEST_CASE("archetype/3", "[constructors and desctructors]") {
   World w;
   auto &a = w.NewArchetype<A, K>();
-  auto eid = a.NewEntity();
-  REQUIRE(w.Get(eid).Get<K>().a == 1); // constructor called
-  REQUIRE(w.Get(eid).Get<K>().b == 3); // constructor called
+  auto e = a.NewEntity();
+  REQUIRE(e.Get<K>().a == 1); // constructor called
+  REQUIRE(e.Get<K>().b == 3); // constructor called
   kDescructorCalled = false;
-  w.Kill(eid);
+  e.Kill();
   REQUIRE(kDescructorCalled); // desctructor called
 }
 
@@ -85,51 +88,17 @@ TEST_CASE("archetype/4", "[constructors and desctructors index bind]") {
   World w;
   SETUP_INDEX;
   auto &a = w.NewArchetype<D, F>();
-  auto eid = a.NewEntity();
-  REQUIRE(w.Get(eid).Get<D>().x == 0);
-  REQUIRE(w.Get(eid).Get<F>().status == Status::S1);
-  REQUIRE(w.Get(eid).Get<D>().x.IsBind());
-  REQUIRE(w.Get(eid).Get<F>().status.IsBind());
-}
-
-TEST_CASE("archetype/5", "[NewEntity inplace]") {
-  World w;
-  SETUP_INDEX;
-  auto &a = w.NewArchetype<D, F>();
-  EntityReference e;
-  auto eid = a.NewEntity(e);
-  REQUIRE(e.GetId() == eid);
+  auto e = a.NewEntity();
   REQUIRE(e.Get<D>().x == 0);
   REQUIRE(e.Get<F>().status == Status::S1);
-  e.Get<D>().x += 999;
-  REQUIRE(w.Get(eid).Get<D>().x == 999);
+  REQUIRE(e.Get<D>().x.IsBind());
+  REQUIRE(e.Get<F>().status.IsBind());
 }
 
 TEST_CASE("archetype/6", "[test get unknown column]") {
   World w;
   SETUP_INDEX;
   auto &a = w.NewArchetype<A>();
-  auto eid = a.NewEntity();
-  REQUIRE_THROWS_AS(w.Get(eid).Get<B>(), std::runtime_error);
-}
-
-TEST_CASE("archetype/7", "[NewEntity with callback 1]") {
-  World w;
-  SETUP_INDEX;
-  auto &a = w.NewArchetype<D, F>();
-  auto eid = a.NewEntity([](EntityReference &ref) { ref.Get<D>().x = 3333; });
-  auto e = w.Get(eid);
-  REQUIRE(e.GetId() == eid);
-  REQUIRE(e.Get<D>().x == 3333);
-}
-
-TEST_CASE("archetype/7", "[NewEntity with callback 2]") {
-  World w;
-  SETUP_INDEX;
-  auto &a = w.NewArchetype<D, F>();
-  auto cb = [](EntityReference &ref) { ref.Get<D>().x = 3333; };
-  auto eid = a.NewEntity(cb);
-  auto e = w.Get(eid);
-  REQUIRE(e.GetId() == eid);
-  REQUIRE(e.Get<D>().x == 3333);
+  auto e = a.NewEntity();
+  REQUIRE_THROWS_AS(e.Get<B>(), std::runtime_error);
 }

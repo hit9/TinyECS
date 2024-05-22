@@ -12,8 +12,8 @@ TEST_CASE("cache_callback", "[callback registeration and removal]") {
   SETUP_INDEX;
 
   auto &a = w.NewArchetype<D>();
-  auto eid = a.NewEntity();
-  w.Get(eid).Get<D>().x = 1;
+  auto e = a.NewEntity();
+  e.Get<D>().x = 1;
 
   Query<D> q(w);
   q.PreMatch().Where(index1 >= 1);

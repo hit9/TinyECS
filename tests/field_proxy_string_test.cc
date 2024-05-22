@@ -12,14 +12,14 @@ TEST_CASE("fieldproxy-string/1", "[test string operators]") {
   SETUP_INDEX;
 
   auto &a = w.NewArchetype<E>();
-  auto eid = a.NewEntity();
-  w.Get(eid).Get<E>().z += "abc";
-  REQUIRE(w.Get(eid).Get<E>().z == "abcabc");
-  REQUIRE(w.Get(eid).Get<E>().z.GetValue().size() == 6);
-  w.Get(eid).Get<E>().z = std::string_view("zh");
-  REQUIRE(w.Get(eid).Get<E>().z == "zh");
-  w.Get(eid).Get<E>().z += std::string_view("zh");
-  REQUIRE(w.Get(eid).Get<E>().z == "zhzh");
-  w.Get(eid).Get<E>().z += std::string("zh");
-  REQUIRE(w.Get(eid).Get<E>().z == "zhzhzh");
+  auto e = a.NewEntity();
+  e.Get<E>().z += "abc";
+  REQUIRE(e.Get<E>().z == "abcabc");
+  REQUIRE(e.Get<E>().z.GetValue().size() == 6);
+  e.Get<E>().z = std::string_view("zh");
+  REQUIRE(e.Get<E>().z == "zh");
+  e.Get<E>().z += std::string_view("zh");
+  REQUIRE(e.Get<E>().z == "zhzh");
+  e.Get<E>().z += std::string("zh");
+  REQUIRE(e.Get<E>().z == "zhzhzh");
 }

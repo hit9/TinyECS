@@ -19,14 +19,14 @@ TEST_CASE("query_filters_where/1", "[simple]") {
   auto e2 = a2.NewEntity();
   auto e3 = a3.NewEntity();
 
-  w.Get(e1).Get<D>().x = 0;
-  w.Get(e1).Get<E>().z = "xyz";
+  e1.Get<D>().x = 0;
+  e1.Get<E>().z = "xyz";
 
-  w.Get(e2).Get<D>().x = 1;
-  w.Get(e2).Get<E>().z = "xyz";
+  e2.Get<D>().x = 1;
+  e2.Get<E>().z = "xyz";
 
-  w.Get(e3).Get<D>().x = 3;
-  w.Get(e3).Get<F>().status = Status::S2;
+  e3.Get<D>().x = 3;
+  e3.Get<F>().status = Status::S2;
 
   Query<D, E> q(w, {index1 >= 1});
   q.PreMatch();
@@ -34,11 +34,11 @@ TEST_CASE("query_filters_where/1", "[simple]") {
 
   std::unordered_set<EntityId> z1;
   q.ForEach([&z1](EntityReference &e) { z1.insert(e.GetId()); });
-  REQUIRE(z1 == decltype(z1){e2});
+  REQUIRE(z1 == decltype(z1){e2.GetId()});
 
   q.ClearFilters();
   q.Where(Filters{index2 == "xyz"}).Where(index1 < 2);
   z1.clear();
   q.ForEach([&z1](EntityReference &e) { z1.insert(e.GetId()); });
-  REQUIRE(z1 == decltype(z1){e1, e2});
+  REQUIRE(z1 == decltype(z1){e1.GetId(), e2.GetId()});
 }
