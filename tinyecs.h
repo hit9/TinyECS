@@ -346,9 +346,18 @@ public:
   [[nodiscard]] bool IsAlive(EntityId eid) const;
   // Kill an entity by id.
   void Kill(EntityId eid);
+  // Get an entity by id, access the target entity via given function.
+  void Get(EntityId eid, const Accessor &cb);
+  inline void Get(EntityId eid, const Accessor &&cb) { return Get(eid, cb); }
+  // Unchecked version of method Get(), ensure the given entity is still alive.
+  void UncheckedGet(EntityId eid, const Accessor &cb);
+  inline void UncheckedGet(EntityId eid, const Accessor &&cb) { return UncheckedGet(eid, cb); }
   // Returns an entity reference by entity id.
   // Returns an entity with IsAlive() == false, if given entity does not exist.
   [[nodiscard]] EntityReference Get(EntityId eid) const;
+  // Unchecked version of method Get(), ensure the given entity is still alive.
+  // Undefined behavior if given entity does not exist.
+  [[nodiscard]] EntityReference UncheckedGet(EntityId eid) const;
   // Register a callback function to be called right after an entity associated with given
   // components is created.
   template <typename... Components> uint32_t AfterEntityCreated(CallbackAfterEntityCreated &cb) {
@@ -371,6 +380,9 @@ protected:
 private:
   std::vector<std::unique_ptr<__internal::IArchetype>> archetypes;
   std::unique_ptr<__internal::Matcher> matcher;
+
+  void get(EntityId eid, EntityReference &ref) const;
+  void uncheckedGet(EntityId eid, EntityReference &ref) const;
 
   /// ~~~~~~~~~~ Callback ~~~~~~~~~~~~~~~~~
   struct Callback {

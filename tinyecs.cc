@@ -200,12 +200,43 @@ void World::Kill(EntityId eid) {
   archetypes[aid]->remove(__internal::unpack_y(eid));
 }
 
-EntityReference World::Get(EntityId eid) const {
+void World::get(EntityId eid, EntityReference &ref) const {
   auto aid = __internal::unpack_x(eid);
-  if (aid >= archetypes.size()) return __internal::NullEntityReference;
+  if (aid >= archetypes.size()) {
+    ref = __internal::NullEntityReference;
+    return;
+  }
   auto &a = archetypes[aid];
-  EntityReference ref;
   a->get(ref, __internal::unpack_y(eid));
+}
+
+void World::uncheckedGet(EntityId eid, EntityReference &ref) const {
+  auto aid = __internal::unpack_x(eid);
+  auto &a = archetypes[aid];
+  a->uncheckedGet(ref, __internal::unpack_y(eid));
+}
+
+void World::Get(EntityId eid, const Accessor &cb) {
+  EntityReference ref;
+  get(eid, ref);
+  cb(ref);
+}
+
+void World::UncheckedGet(EntityId eid, const Accessor &cb) {
+  EntityReference ref;
+  uncheckedGet(eid, ref);
+  cb(ref);
+}
+
+EntityReference World::Get(EntityId eid) const {
+  EntityReference ref;
+  get(eid, ref);
+  return ref;
+}
+
+EntityReference World::UncheckedGet(EntityId eid) const {
+  EntityReference ref;
+  uncheckedGet(eid, ref);
   return ref;
 }
 
