@@ -82,15 +82,5 @@ TEST_CASE("query_simple/2", "[collect]") {
   Query<D> q(w);
   std::vector<EntityReference> vec;
   q.PreMatch().Where(index1 >= 4).Collect(vec);
-  REQUIRE(vec.size() == 3);
-  // The results are not ordered, but are ordered inside their archetypes.
-  std::unordered_set<EntityId> st;
-  for (auto &ref : vec) st.insert(ref.GetId());
-  REQUIRE(st == decltype(st){e2.GetId(), e3.GetId(), e4.GetId()});
-  // e4 must after e3
-  std::vector<EntityReference> vecA2;
-  for (auto &ref : vec) {
-    if (ref.GetArchetypeId() == a2.GetId()) { vecA2.push_back(ref); }
-  }
-  REQUIRE(vecA2 == decltype(vecA2){e3, e4});
+  REQUIRE(vec == decltype(vec){e2, e3, e4});
 }
