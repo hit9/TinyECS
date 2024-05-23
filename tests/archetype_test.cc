@@ -1,5 +1,6 @@
 
 #include <catch2/catch_test_macros.hpp>
+#include <random>
 #include <stdexcept>
 
 #include "shares.h"
@@ -85,6 +86,16 @@ TEST_CASE("archetype/2", "[allocate new block]") {
   // Gets the data again.
   REQUIRE(e.IsAlive());
   REQUIRE(e.Get<A>().x == 333);
+
+  // random get an entity set and get.
+  std::mt19937 rd(std::random_device{}());
+  std::uniform_int_distribution<EntityShortId> dist(0, e.GetId());
+  for (int k = 0; k < 100; k++) {
+    auto eid = dist(rd);
+    auto x = dist(rd);
+    w.Get(eid).Get<A>().x = x;
+    REQUIRE(w.Get(eid).Get<A>().x == x);
+  }
 }
 
 TEST_CASE("archetype/3", "[constructors and desctructors]") {

@@ -111,10 +111,12 @@ public:
   virtual ArchetypeId GetId() const = 0;
 
 protected:
+  // ~~~~~~ for IArchetype to override ~~~~~~
   virtual bool contains(EntityShortId e) const = 0;
   virtual void remove(EntityShortId e) = 0;
   virtual unsigned char *getComponentRawPtr(unsigned char *data, ComponentId cid) const = 0;
   virtual unsigned char *uncheckedGetComponentRawPtr(unsigned char *data, ComponentId cid) const = 0;
+  // ~~~~ templated api method ~~~~~
   template <typename C> inline C *getComponentPtr(unsigned char *data) const {
     return reinterpret_cast<C *>(getComponentRawPtr(data, IComponent<C>::GetId()));
   }
@@ -139,17 +141,17 @@ public:
       : a(a), data(data), id(id) {}
   EntityReference() = default; // for __internal::NullEntityReference
   ~EntityReference() = default;
+  bool operator==(const EntityReference &o) const { return data == o.data; }
   // Returns a component of this entity by given component type.
-  template <typename Component> Component &Get() { return *a->getComponentPtr<Component>(data); }
+  template <typename Component> inline Component &Get() { return *a->getComponentPtr<Component>(data); }
   // UncheckedGet is similar to Get(), but won't validate column.
-  template <typename Component> Component &UncheckedGet() {
+  template <typename Component> inline Component &UncheckedGet() {
     return *a->uncheckedGetComponentPtr<Component>(data);
   }
   inline EntityId GetId() const { return id; }
   inline bool IsAlive(void) const { return a != nullptr && a->contains(__internal::unpack_y(id)); }
   inline void Kill() { a->remove(__internal::unpack_y(id)); }
   inline ArchetypeId GetArchetypeId() const { return a->GetId(); }
-  bool operator==(const EntityReference &o) const { return data == o.data; }
 };
 
 // Accessor is a function to access an entity via an entity reference.
@@ -904,8 +906,10 @@ public:
   ~ICacher() { clearCallbacks(); }
 
   // Cache iteration ForEach methods (in-place iteration).
+  // The order of iteration is according to the entity ids from small to large,
+  // and entities in the same archetype will be accessed next to each other.
   // We always guarantee the callback won't touch a dead entity.
-  // It's **undefined behavior** to create/remove entities, or update indexes associated with this
+  // But it's **undefined behavior** to create/remove entities, or update indexes associated with this
   // cacher's in given callback. For such situations, consider to create and remove entities at frame
   // begin or end, or just use Collect() to safely work on a copy.
   void ForEach(const Accessor &cb);
@@ -1010,6 +1014,8 @@ public:
   IQuery &ClearFilters();
 
   // Execute the query, and call given callback for each matched entities **in place**.
+  // The order of iteration is according to the entity ids from small to large,
+  // and entities in the same archetype will be accessed next to each other.
   // Internal brief:
   // 1. If filters are provided, apply filters and then iterates matched entities for each archetype.
   // 2. Otherwise, this is a simple query just about some archetypes, for each archetype, run with
@@ -1024,6 +1030,7 @@ public:
   inline void ForEachUntil(const AccessorUntil &&cb) { ForEachUntil(cb); }
 
   // Execute the query, and copy entity reference results to given vector.
+  // The order of collected entities is arranged from small to large by entity id.
   void Collect(std::vector<EntityReference> &vec);
 
   // Constructs a cache from this query, this will execute the query at once and
