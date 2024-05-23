@@ -68,9 +68,23 @@ TEST_CASE("archetype/2", "[allocate new block]") {
     a.NewEntity();
   REQUIRE(a.NumBlocks() == 1);
   REQUIRE(MaxNumEntitiesPerBlock == a.NumEntities());
-  a.NewEntity();
+
+  for (int i = 0; i < MaxNumEntitiesPerBlock; i++)
+    a.NewEntity();
   REQUIRE(a.NumBlocks() == 2);
-  REQUIRE(MaxNumEntitiesPerBlock + 1 == a.NumEntities());
+  REQUIRE(MaxNumEntitiesPerBlock * 2 == a.NumEntities());
+
+  a.NewEntity();
+  REQUIRE(a.NumBlocks() == 3);
+  REQUIRE(MaxNumEntitiesPerBlock * 2 + 1 == a.NumEntities());
+
+  // Creates a new Entity.
+  auto e = a.NewEntity();
+  e.Get<A>().x = 333;
+
+  // Gets the data again.
+  REQUIRE(e.IsAlive());
+  REQUIRE(e.Get<A>().x == 333);
 }
 
 TEST_CASE("archetype/3", "[constructors and desctructors]") {

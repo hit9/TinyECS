@@ -5,23 +5,24 @@
 #ifndef __HIT9_TINYECS_H
 #define __HIT9_TINYECS_H
 
-#include <algorithm> // std::max, std::fill_n
-#include <bitset>
-#include <concepts> // std::integral
-#include <cstddef>  // std::size_t
-#include <cstdint>  // uint32_t, uint16_t
-#include <functional>
-#include <map>       // std::map, std::multimap
-#include <memory>    // std::unique_ptr, std::shared_ptr
-#include <set>       // std::set
-#include <stdexcept> // std::runtime_error
-#include <string>
-#include <string_view>
+#include <algorithm>     // std::max
+#include <bitset>        // std::bitset
+#include <concepts>      // std::integral
+#include <cstddef>       // std::size_t
+#include <cstdint>       // uint32_t, uint16_t
+#include <deque>         // std::deque
+#include <functional>    // std::function
+#include <map>           // std::map, std::multimap
+#include <memory>        // std::unique_ptr, std::shared_ptr
+#include <set>           // std::set
+#include <stdexcept>     // std::runtime_error
+#include <string>        // std::string
+#include <string_view>   // std::string_view
 #include <type_traits>   // std::is_convertible_v
 #include <unordered_map> // std::unordered_map, std::unordered_multimap
-#include <unordered_set>
-#include <utility> // std::pair
-#include <vector>
+#include <unordered_set> // std::unordered_set
+#include <utility>       // std::pair
+#include <vector>        // std::vector
 
 namespace tinyecs {
 
@@ -179,26 +180,62 @@ private:
   bool lastCreatedEntityIdSet = false;
 };
 
+// Cemetery stores short ids for dead entities,
+class Cemetery {
+public:
+  static const size_t NumRowsPerBlock = MaxNumEntitiesPerBlock;
+  inline size_t Size() const { return q.size(); }
+  bool Contains(EntityShortId e) const; // O(1)
+  void Add(EntityShortId e);            // O(1)
+  EntityShortId Pop();                  // O(1)
+private:
+  // FIFO reuse. use deque instead of list, reason:
+  // 1. list: less memory, but invokes a memory allocation on each insertion.
+  // 2. deque: linked fixed-size arrays, more memory, at least two pointer dereferences accessing,
+  //      but allocates a whole block at once.
+  // For liveness checking, we just use the bitset, the queue is only for insertions and removals,
+  // so the memory allocation cost matters, the deque wins.
+  std::deque<EntityShortId> q;
+  // A vector of bitset pointers, for quick existence checking.
+  // Use bitsets instead of a single unordered_set for less memory usage.
+  // Since the bitset requires a fixed-size template parameter, so we cut it into blocks,
+  // storing a vector of pointers of fixed-size bitset units.
+  std::vector<std::unique_ptr<std::bitset<NumRowsPerBlock>>> blocks;
+  // Redundancy of: blocks.size() * NumRowsPerBlock
+  // Perform addition for `bound` on each `Add()`, and the multiplication operation in the method Contains()
+  // could be omitted. Contains() calls requires to be fast.
+  size_t bound = 0;
+};
+
 // Internal Archetype interface class.
 class IArchetype : public IArchetypeEntityApi {
 private:
   ArchetypeId id;
-  EntityShortId ecursor = 0;                  // e (entity short id) cursor.
-  std::unordered_set<EntityShortId> cemetery; // for recycle & liveness checks
-  const Signature &signature;                 // ref to static storage
+  EntityShortId ecursor = 0;  // e (entity short id) cursor.
+  Cemetery cemetery;          // for recycle & liveness checks
+  const Signature &signature; // ref to static storage
   // Use a fixed-size array for faster performance than an unordered_map.
   // cols[componentID] => column in this archetype for a component.
   // Max memory usage estimate in a world:
   // N(archetypes) x N(components) * sizeof(uint16_t) = 4096 * 128 * 2 = 1MB
   uint16_t cols[MaxNumComponents];
-  // Block row layout:  | EntityReference | Component A | Component B ...
+  // Block layout:
+  //
+  //        +------------------- Cell x numCols ------------------+
+  // Row(0) | EntityReference(0) | Component A | Component B ...  |
+  // Row(1) | EntityReference(1) | Component A | Component B ...  |
+  //        +-----------------------------------------------------+
+  //                Block(0), height=<numRows>, width=<numCols>
+  //
+  // The vector stores pointers of block buffer, not the block itself,
+  // avoiding buffer copying during vector capacity growing.
   std::vector<std::unique_ptr<unsigned char[]>> blocks;
   static const size_t numRows = MaxNumEntitiesPerBlock;
   const size_t numCols, cellSize, rowSize, blockSize;
   IWorld *world = nullptr;
 
   // Implements IArchetypeEntityApi
-  inline bool contains(EntityShortId e) const override { return e < ecursor && !cemetery.contains(e); }
+  inline bool contains(EntityShortId e) const override { return e < ecursor && !cemetery.Contains(e); }
   void remove(EntityShortId e) override;
   unsigned char *getComponentRawPtr(unsigned char *data, ComponentId cid) const override;
   inline unsigned char *uncheckedGetComponentRawPtr(unsigned char *data, ComponentId cid) const override {
@@ -235,7 +272,8 @@ public:
   // Returns number of blocks.
   inline size_t NumBlocks() const { return blocks.size(); }
   // Returns number of alive entities.
-  inline size_t NumEntities() const { return ecursor - cemetery.size(); }
+  // Note: cemetery should always not larger than ecursor.
+  inline size_t NumEntities() const { return ecursor - cemetery.Size(); }
   // Returns the block size.
   inline size_t BlockSize() const { return blockSize; }
   // Creates a new entity, recycle at first, otherwise increases internal entity short id.

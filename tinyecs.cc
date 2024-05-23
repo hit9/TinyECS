@@ -3,6 +3,8 @@
 // Requirements: at least C++20.
 
 #include "tinyecs.h"
+#include <algorithm> // std::fill_n
+#include <cstdlib>   // std::ldiv
 
 namespace tinyecs {
 
@@ -10,6 +12,20 @@ namespace __internal {
 
 ComponentId IComponentBase::nextId = 0;
 static EntityReference NullEntityReference = {};
+
+// Use std::ldiv for faster divide and module operations, than / and % operators.
+// from cppreference.com:
+// > On many platforms, a single CPU instruction obtains both the quotient and the remainder, and this
+// function may leverage that, although compilers are generally able to merge nearby / and % where suitable.
+// And static_cast is safe here, a short entity id covers from 0 to 0x7ffff, the `long` type guarantees at
+// least 32 bit size.
+static inline std::pair<size_t, size_t> __div(EntityShortId e, size_t N) {
+  // from cppreference: the returned std::ldiv_t might be either form of
+  // { int quot; int rem; } or { int rem; int quot; }, the order of its members is undefined,
+  // we have to pack them into a pair for further structured bindings.
+  auto dv = std::ldiv(static_cast<long>(e), static_cast<long>(N));
+  return {dv.quot, dv.rem};
+}
 
 /////////////////////////
 /// IArchetype
@@ -30,6 +46,36 @@ void IWorld::setLastCreatedEntityId(EntityId eid) {
   lastCreatedEntityIdSet = true;
 }
 
+// Returns true if given entity short id is inside the cemetery, aka already dead.
+bool Cemetery::Contains(EntityShortId e) const {
+  if (e >= bound) return false;
+  const auto [i, j] = __div(e, NumRowsPerBlock);
+  return blocks[i]->test(j);
+}
+
+// Adds an entity short id into the cemetery.
+// If the underlying blocks are not enough, make a new one.
+void Cemetery::Add(EntityShortId e) {
+  // Allocates new blocks if not enough
+  const auto [i, j] = __div(e, NumRowsPerBlock);
+  while (i >= blocks.size()) {
+    blocks.push_back(std::make_unique<std::bitset<NumRowsPerBlock>>());
+    bound += NumRowsPerBlock;
+  }
+  blocks[i]->set(j);
+  q.push_back(e);
+}
+
+// Pops an entity short id from management.
+// Must guarantee this cemetery is not empty in advance.
+EntityShortId Cemetery::Pop() {
+  auto e = q.front();
+  q.pop_front();
+  const auto [i, j] = __div(e, NumRowsPerBlock);
+  blocks[i]->reset(j);
+  return e;
+}
+
 IArchetype::IArchetype(ArchetypeId id, IWorld *world, size_t numComponents, size_t cellSize,
                        const Signature &signature)
     : id(id), world(world), numCols(numComponents + 1), cellSize(cellSize), rowSize(numCols * cellSize),
@@ -43,9 +89,8 @@ IArchetype::IArchetype(ArchetypeId id, IWorld *world, size_t numComponents, size
 }
 
 unsigned char *IArchetype::getEntityData(EntityShortId e) const {
-  auto i = e / numRows, j = e % numRows;
-  auto block = blocks[i].get();
-  return block + j * rowSize;
+  const auto [i, j] = __div(e, numRows);
+  return blocks[i].get() + j * rowSize;
 }
 
 EntityReference &IArchetype::get(EntityShortId e) {
@@ -68,12 +113,9 @@ EntityReference &IArchetype::NewEntity() {
   EntityShortId e;
   unsigned char *data;
 
-  if (cemetery.size()) {
+  if (cemetery.Size()) {
     // Reuse dead entity ids.
-    // Possible improvements todo: use ordered set for cemetery,
-    // to recycle oldest deaded firstly.
-    e = *cemetery.begin();
-    cemetery.erase(e);
+    e = cemetery.Pop();
     data = getEntityData(e);
     std::fill_n(data, rowSize, 0);
   } else {
@@ -106,7 +148,7 @@ void IArchetype::remove(EntityShortId e) {
   destructComponents(data);
   // Call destructor of EntityReference.
   reinterpret_cast<EntityReference *>(data)->~EntityReference();
-  cemetery.insert(e);
+  cemetery.Add(e);
 }
 
 void IArchetype::ForEach(const Accessor &cb) {
@@ -129,7 +171,7 @@ void IArchetype::ForEachUntil(const AccessorUntil &cb) {
   // for each short id before performing a UncheckedGet call.
   auto end = ecursor;
   for (EntityShortId e = 0; e < end; e++) {
-    if (!cemetery.contains(e))
+    if (!cemetery.Contains(e))
       if (cb(uncheckedGet(e))) break;
   }
 }
@@ -140,7 +182,7 @@ void IArchetype::ForEachUntil(const AccessorUntil &cb, const OrderedEntityShortI
   for (auto e : st) {
     // Check liveness for each entity to in case of possible entity removals
     // in the callback function.
-    if (!cemetery.contains(e))
+    if (!cemetery.Contains(e))
       if (cb(uncheckedGet(e))) break;
   }
 }
