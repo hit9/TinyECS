@@ -23,7 +23,7 @@ TEST_CASE("world/2", "[Get]") {
   REQUIRE(w.Get(eid2).GetId() == eid2);
 }
 
-TEST_CASE("world/4", "[UncheckedGet]") {
+TEST_CASE("world/3", "[UncheckedGet]") {
   World w;
   auto &a1 = w.NewArchetype<A>();
   auto &a2 = w.NewArchetype<B>();
@@ -33,4 +33,13 @@ TEST_CASE("world/4", "[UncheckedGet]") {
   REQUIRE(w.UncheckedGet(eid2).GetId() == eid2);
 }
 
-// TODO: test Kill, Alive, callback etc.
+TEST_CASE("world/4", "[IsAlive & Kill]") {
+  World w;
+  auto &a = w.NewArchetype<A>();
+  REQUIRE(!w.IsAlive(0));
+  auto e = a.NewEntity();
+  auto eid = e.GetId();
+  REQUIRE(w.IsAlive(eid));
+  w.Kill(eid);
+  REQUIRE(!w.IsAlive(eid));
+}
