@@ -14,7 +14,6 @@
 #include <functional>    // std::function
 #include <map>           // std::map, std::multimap
 #include <memory>        // std::unique_ptr, std::shared_ptr
-#include <set>           // std::set
 #include <stdexcept>     // std::runtime_error
 #include <string>        // std::string
 #include <string_view>   // std::string_view
@@ -50,8 +49,7 @@ class IArchetype;
 namespace __internal { // DO NOT USE NAMES FROM __internal
 
 using EntityIdSet = std::unordered_set<EntityId>; // set of entity ids
-using OrderedEntityShortIdSet = std::set<EntityShortId>;
-using AIds = std::unordered_set<ArchetypeId>; // set of archetype ids.
+using AIds = std::unordered_set<ArchetypeId>;     // set of archetype ids.
 using AIdsPtr = std::shared_ptr<AIds>;
 
 // Layout of long entity id: 32bits = [ archetype id (13bits)  ][  entity short id (19bits) ]
@@ -253,6 +251,7 @@ private:
   inline const Signature &getSignature() const { return signature; };
 
   friend World;   // for get, uncheckedGet, getSignature
+  friend IQuery;  // for get
   friend ICacher; // for get, uncheckedGet
 
 protected:
@@ -286,8 +285,6 @@ public:
   // ForEachUntil is the ForEach that stops the iteration earlier when the given callback returns true.
   void ForEachUntil(const AccessorUntil &cb);
   inline void ForEachUntil(const AccessorUntil &&cb) { ForEachUntil(cb); }
-  // Run given callback function for a given set of ordered entity short ids in this archetype.
-  void ForEachUntil(const AccessorUntil &cb, const OrderedEntityShortIdSet &st);
 };
 
 using ArchetypeSignature = std::bitset<MaxNumArchetypesPerWorld>;

@@ -2,9 +2,11 @@
 // License: BSD. https://github.com/hit9/tinyecs
 // Requirements: at least C++20.
 
-#include "tinyecs.h"
 #include <algorithm> // std::fill_n
 #include <cstdlib>   // std::ldiv
+#include <set>       // std::set
+
+#include "tinyecs.h"
 
 namespace tinyecs {
 
@@ -171,17 +173,6 @@ void IArchetype::ForEachUntil(const AccessorUntil &cb) {
   // for each short id before performing a UncheckedGet call.
   auto end = ecursor;
   for (EntityShortId e = 0; e < end; e++) {
-    if (!cemetery.Contains(e))
-      if (cb(uncheckedGet(e))) break;
-  }
-}
-
-void IArchetype::ForEachUntil(const AccessorUntil &cb, const OrderedEntityShortIdSet &st) {
-  // The given set of entity short ids is ordered, matches the order
-  // of entities's memory addresses.
-  for (auto e : st) {
-    // Check liveness for each entity to in case of possible entity removals
-    // in the callback function.
     if (!cemetery.Contains(e))
       if (cb(uncheckedGet(e))) break;
   }
@@ -388,18 +379,22 @@ void IQuery::executeWithFilters(const AccessorUntil &cb) {
     return false;
   });
 
-  // Group entity short ids by archetypes, and sort:
-  // thus scanning in an archetype are as continuous in memory as possible.
+  // Sort entity ids to make scanning in an archetype are as continuous
+  // in memory as possible.
   // TODO: any optimization ideas here to avoid sorting?
-  std::unordered_map<ArchetypeId, OrderedEntityShortIdSet> m;
-  for (auto eid : ans)
-    m[__internal::unpack_x(eid)].insert(__internal::unpack_y(eid));
-
-  // Run callback function for each archetype and matched entities inside it.
-  // Note: No need to check whether an entity belongs to this query's archetypes.
-  // Because the function initial collector of the first filter guarantees it.
-  for (const auto &[aid, st] : m)
-    archetypes[aid]->ForEachUntil(cb, st);
+  std::set<EntityId> st(ans.begin(), ans.end());
+  for (auto eid : st) {
+    // Run callback function for each entity.
+    // Note: No need to check whether an entity belongs to this query's archetypes.
+    // Because the function initial collector of the first filter guarantees it.
+    auto aid = __internal::unpack_x(eid);
+    // Use get instead of uncheckedGet to ensure the entity is still alive.
+    // Given callback might kill some entity.
+    // TODO: shall we use uncheckedGet here? if user promise there's no entity killings
+    // inside the callback.
+    auto &ref = archetypes[aid]->get(__internal::unpack_y(eid));
+    if (cb(ref)) break;
+  }
 }
 
 // Executes given callback directly on each interested archetypes.
