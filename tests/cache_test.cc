@@ -6,7 +6,7 @@
 using namespace tinyecs;
 using namespace tinyecs_tests;
 
-TEST_CASE("cache", "[simple]") {
+TEST_CASE("cache/1", "[simple]") {
   World w;
   SETUP_INDEX;
 
@@ -116,4 +116,33 @@ TEST_CASE("cache", "[simple]") {
   REQUIRE(g2 == decltype(g2){e4.GetId(), e5.GetId(), e6.GetId()});
   REQUIRE(g3 == decltype(g3){e6.GetId(), e5.GetId()});
   REQUIRE(g4 == decltype(g4){e6.GetId()});
+}
+
+TEST_CASE("cache/2", "[cache collect]") {
+  World w;
+  SETUP_INDEX;
+
+  auto &a1 = w.NewArchetype<A, D>();
+  auto &a2 = w.NewArchetype<D, E>();
+
+  auto e1 = a1.NewEntity();
+  auto e2 = a1.NewEntity();
+  auto e3 = a2.NewEntity();
+  auto e4 = a2.NewEntity();
+
+  e1.Get<A>().x = 3;
+  e1.Get<D>().x = 3;
+
+  e2.Get<D>().x = 44;
+
+  e3.Get<D>().x = 32;
+  e3.Get<E>().z = "xyz";
+  e4.Get<D>().x = 99;
+
+  Query<D> q(w);
+  std::vector<EntityReference> vec;
+  auto cacher = q.PreMatch().Where(index1 >= 4).Cache();
+  cacher.Collect(vec);
+  // cacher collect has order.
+  REQUIRE(vec == decltype(vec){e2, e3, e4});
 }

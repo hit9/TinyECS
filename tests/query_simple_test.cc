@@ -7,7 +7,7 @@
 using namespace tinyecs;
 using namespace tinyecs_tests;
 
-TEST_CASE("query_simple", "[simple]") {
+TEST_CASE("query_simple/1", "[simple]") {
   World w;
   SETUP_INDEX;
 
@@ -56,4 +56,41 @@ TEST_CASE("query_simple", "[simple]") {
   std::unordered_set<EntityId> m6;
   q6.ForEach([&](EntityReference &e) { m6.insert(e.GetId()); });
   REQUIRE(m6 == decltype(m1){e2.GetId(), e3.GetId()});
+}
+
+TEST_CASE("query_simple/2", "[collect]") {
+  World w;
+  SETUP_INDEX;
+
+  auto &a1 = w.NewArchetype<A, D>();
+  auto &a2 = w.NewArchetype<D, E>();
+
+  auto e1 = a1.NewEntity();
+  auto e2 = a1.NewEntity();
+  auto e3 = a2.NewEntity();
+  auto e4 = a2.NewEntity();
+
+  e1.Get<A>().x = 3;
+  e1.Get<D>().x = 3;
+
+  e2.Get<D>().x = 44;
+
+  e3.Get<D>().x = 32;
+  e3.Get<E>().z = "xyz";
+  e4.Get<D>().x = 99;
+
+  Query<D> q(w);
+  std::vector<EntityReference> vec;
+  q.PreMatch().Where(index1 >= 4).Collect(vec);
+  REQUIRE(vec.size() == 3);
+  // The results are not ordered, but are ordered inside their archetypes.
+  std::unordered_set<EntityId> st;
+  for (auto &ref : vec) st.insert(ref.GetId());
+  REQUIRE(st == decltype(st){e2.GetId(), e3.GetId(), e4.GetId()});
+  // e4 must after e3
+  std::vector<EntityReference> vecA2;
+  for (auto &ref : vec) {
+    if (ref.GetArchetypeId() == a2.GetId()) { vecA2.push_back(ref); }
+  }
+  REQUIRE(vecA2 == decltype(vecA2){e3, e4});
 }
