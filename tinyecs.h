@@ -155,11 +155,11 @@ public:
   // Kill this entity right now.
   inline void Kill() { a->kill(__internal::unpack_y(id)); }
   // Mark this entity to be killed later.
-  // Finllay we should call world.ApplyDelayed() to make it take effect.
+  // Finllay we should call world.ApplyDelayedKill() to make it take effect.
   inline void DelayedKill() { a->delayedKill(__internal::unpack_y(id)); }
   // Returns true if this entity is alive.
-  // For delay created entity, it's not alive until a world.ApplyDelayed() is called.
-  // For delay killed entity, it's still alive until a world.ApplyDelayed() is called.
+  // For delay created entity, it's not alive until a world.ApplyDelayedNewEntity() is called.
+  // For delay killed entity, it's still alive until a world.ApplyDelayedKill() is called.
   inline bool IsAlive(void) const { return a != nullptr && a->isAlive(__internal::unpack_y(id)); }
 };
 
@@ -186,7 +186,8 @@ protected:
   // ~~~~~~~~ for class World to override ~~~~~~~
   virtual void afterEntityCreated(ArchetypeId a, EntityShortId e) = 0;
   virtual void beforeEntityRemoved(ArchetypeId a, EntityShortId e) = 0;
-  virtual void setDirtyHasDelayed(ArchetypeId a) = 0;
+  virtual void setArchetypeHasDelayedNew(ArchetypeId a) = 0;
+  virtual void setArchetypeHasDelayedKill(ArchetypeId a) = 0;
 
 private:
   EntityId lastCreatedEntityId = 0;
@@ -298,13 +299,29 @@ protected:
   inline bool isAlive(EntityShortId e) const override {
     return e < ecursor && !cemetery.Contains(e) && !toBorn.contains(e);
   }
+
+  //~~~~~~~~ Kill Entity ~~~~~~~~~~~~~~
   // kill an entity by short id at once. O(logN).
   void kill(EntityShortId e) override;
   // Mark an entity to be killed. O(1)
   // If the given entity is already dead, does nothing.
   void delayedKill(EntityShortId e) override;
-  // Apply delayed entity creations and kills.
-  void apply();
+  // Apply all delayed entity killings.
+  void applyDelayedKill();
+
+  //~~~~~~~~ New Entity ~~~~~~~~~~~~~~
+  // Allocates a seat for a new entity, including a short id and block row's memory address. Time: O(1)
+  //  1. If the cemetery is not empty, reuse at first.
+  //  2. Otherwise increases the internal short id cursor.
+  //     What's more, allocates a new block on need.
+  std::pair<EntityShortId, unsigned char *> allocateForNewEntity();
+  // Makes an entity to be alive in the world.
+  // 1. Constructs the entity reference.
+  // 2. Constructs each component of this entity.
+  // 3. Adds to set alives.
+  void doNewEntity(EntityShortId e, unsigned char *data, EntityReference *ref);
+  // Apply all delayed entity creations.
+  void applyDelayedNewEntity();
 
   // ~~~~~~~ for Archetype Impl ~~~~~~~~~~
   // Call destructors of all components of an entity by providing entity data address.
@@ -326,12 +343,21 @@ public:
   // Returns number of alive entities.
   // Note: cemetery+toBorn should always not larger than ecursor, thus minus on size_t is safe.
   inline size_t NumEntities() const { return ecursor - cemetery.Size() - toBorn.size(); }
-  // Creates a new entity, try to recycle at first, otherwise increases internal entity short id cursor.
+  // Creates a new entity at once, try to reuse dead entity's id and memory space at first,
+  // otherwise allocating a new seat from underlying block, and allocates a new block on need.
   // Returns a reference to the created entity.
-  // Possible allocation: if the underlying blocks are not enough, will allocate a new one.
   // Time complexity: O(logN) to maintain the set alives.
   EntityReference &NewEntity();
+  // Creates a new entity later, returns a reference to the entity.
+  // Finllay we should call world.ApplyDelayedNewEntity() to make it take effect.
+  // Although this entity is currently still considered non-alive, but we can still set its
+  // component data via this reference. And this is the only chance the get its reference,
+  // since for a to-born entity, it's considered non-alive,  we cannot call Get/ForEach queries to get a
+  // reference to it.
+  // When the ApplyDelayedNewEntity is called, there's no entity data copy, the entity is just marked alive.
+  EntityReference &DelayedNewEntity();
   // Run given callback function for all alive entities in this archetype.
+  // It will iterate entities in order of id from smaller to larger.
   void ForEach(const Accessor &cb);
   // ForEach is allowed to pass in a temporary function.
   // Templates and reference folding are not used here, but overloading is used.
@@ -433,7 +459,7 @@ public:
   // Kill an entity by id.
   void Kill(EntityId eid);
   // Mark an entity to be killed later.
-  // Finllay we should call world.ApplyDelayed() to make it take effect.
+  // Finllay we should call world.ApplyDelayedKill() to make it take effect.
   void DelayedKill(EntityId eid);
   // Returns the reference to an entity by entity id.
   // Returns the NullEntityReference if given entity does not exist, of which method IsAlive() == false,
@@ -454,21 +480,24 @@ public:
   // Remove callback from management by callback id.
   void RemoveCallback(uint32_t id);
   inline size_t NumCallbacks() const { return callbacks.size(); }
-  // Apply delayed entity creations and killings to all archetypes.
-  void ApplyDelayed();
+  // Apply delayed entity killings for all archetypes.
+  void ApplyDelayedKill();
+  // Apply delayed entity creations for all archetypes.
+  void ApplyDelayedNewEntity();
 
 protected:
   // Impls IWorld
   void afterEntityCreated(ArchetypeId a, EntityShortId e) override { triggerCallbacks(a, e, 0); }
   void beforeEntityRemoved(ArchetypeId a, EntityShortId e) override { triggerCallbacks(a, e, 1); }
-  virtual void setDirtyHasDelayed(ArchetypeId a) override { dirtyArchetypeIds.insert(a); }
+  void setArchetypeHasDelayedNew(ArchetypeId a) override { archetypeIdHasDelayedNew.insert(a); }
+  void setArchetypeHasDelayedKill(ArchetypeId a) override { archetypeIdHasDelayedKill.insert(a); }
 
 private:
   std::vector<std::unique_ptr<__internal::IArchetype>> archetypes;
   std::unique_ptr<__internal::Matcher> matcher;
 
   // stores the archetypes which contains entities to be born and kill.
-  std::unordered_set<ArchetypeId> dirtyArchetypeIds;
+  std::unordered_set<ArchetypeId> archetypeIdHasDelayedNew, archetypeIdHasDelayedKill;
 
   /// ~~~~~~~~~~ Callback ~~~~~~~~~~~~~~~~~
   struct Callback {

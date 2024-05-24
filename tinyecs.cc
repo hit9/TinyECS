@@ -107,40 +107,50 @@ unsigned char *IArchetype::getComponentRawPtr(unsigned char *entityData, Compone
   return entityData + col * cellSize;
 }
 
-// Creates a new entity, returns the entity reference.
-// If cemetery contains dead entity ids, recycle it at first.
-// Otherwise, increase the cursor to occupy a new entity short id and data row.
-// If the data row exceeds the total size of blocks, then creates a new block.
-EntityReference &IArchetype::NewEntity() {
+std::pair<EntityShortId, unsigned char *> IArchetype::allocateForNewEntity() {
   EntityShortId e;
   unsigned char *data;
 
   if (cemetery.Size()) {
-    // Reuse dead entity ids.
+    // Reuse dead entity id and space.
     e = cemetery.Pop();
     data = getEntityData(e);
     std::fill_n(data, rowSize, 0);
   } else {
     // Increase the entity id cursor.
     e = ecursor++;
-    if (e >= numRows * blocks.size()) { // Allocate block if not enough
+    if (e >= numRows * blocks.size()) {
+      // Allocate block if not enough
       blocks.push_back(std::make_unique<unsigned char[]>(blockSize));
       std::fill_n(blocks.back().get(), blockSize, 0);
     }
     data = getEntityData(e);
   }
-  auto eid = pack(id, e);
-  // Constructs the entity reference.
-  auto ptr = new (data) EntityReference(this, data, eid);
-  // Call constructors for each component,
-  world->setLastCreatedEntityId(eid);
-  constructComponents(data);
-  // After created
-  world->clearLastCreatedEntityId();
-  // inserts before OnEntityCreated callbacks called.
+  // Constructs an entity reference.
+  new (data) EntityReference(this, data, pack(id, e));
+  return {e, data};
+}
+
+void IArchetype::doNewEntity(EntityShortId e, unsigned char *data, EntityReference *ref) {
+  // The entity is marked alive.
   alives.insert(e);
+  // Call constructors of each component for this entity.
+  // Before the constructor is called, set the entity id to the world in advance,
+  // Because the index will query the lastCreatedEntityId in the world.
+  // And the component's constructor may bind some indexes then.
+  world->setLastCreatedEntityId(ref->GetId());
+  constructComponents(data);
+  world->clearLastCreatedEntityId();
   world->afterEntityCreated(id, e);
-  return *ptr;
+}
+
+void IArchetype::applyDelayedNewEntity() {
+  for (auto e : toBorn) {
+    auto data = getEntityData(e);
+    auto ref = reinterpret_cast<EntityReference *>(data);
+    doNewEntity(e, data, ref);
+  }
+  toBorn.clear();
 }
 
 void IArchetype::kill(EntityShortId e) {
@@ -160,16 +170,33 @@ void IArchetype::kill(EntityShortId e) {
 void IArchetype::delayedKill(EntityShortId e) {
   if (isAlive(e)) {
     toKill.insert(e);
-    world->setDirtyHasDelayed(id);
+    world->setArchetypeHasDelayedKill(id);
   }
 }
 
-void IArchetype::apply() {
+void IArchetype::applyDelayedKill() {
   // Kill entities to be killed.
   for (auto e : toKill)
     kill(e);
   toKill.clear();
-  // TODO: create entities to be born.
+}
+
+EntityReference &IArchetype::NewEntity() {
+  auto [e, data] = allocateForNewEntity();
+  auto ref = reinterpret_cast<EntityReference *>(data); // pointer
+  doNewEntity(e, data, ref);
+  return *ref;
+}
+
+EntityReference &IArchetype::DelayedNewEntity() {
+  // A to-born entity is considered non-alive.
+  // But we have to pre-allocate a seat for it, its id and reference are aviable,
+  // then data can be set here in-place. In this design, we avoid data copy to
+  // support the "delayed new" feature.
+  auto [e, data] = allocateForNewEntity();
+  toBorn.insert(e);
+  auto ref = reinterpret_cast<EntityReference *>(data);
+  return *ref;
 }
 
 void IArchetype::ForEach(const Accessor &cb) {
@@ -292,10 +319,18 @@ void World::RemoveCallback(uint32_t id) {
   callbacks.erase(it);
 }
 
-void World::ApplyDelayed() {
-  for (auto aid : dirtyArchetypeIds)
-    archetypes[aid]->apply();
-  archetypes.clear();
+void World::ApplyDelayedKill() {
+  for (auto aid : archetypeIdHasDelayedKill) {
+    archetypes[aid]->applyDelayedKill();
+  }
+  archetypeIdHasDelayedKill.clear();
+}
+
+void World::ApplyDelayedNewEntity() {
+  for (auto aid : archetypeIdHasDelayedNew) {
+    archetypes[aid]->applyDelayedNewEntity();
+  }
+  archetypeIdHasDelayedNew.clear();
 }
 
 // Push a callback function into management to subscribe create and kill enntities events
