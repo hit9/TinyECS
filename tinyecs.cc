@@ -96,7 +96,7 @@ unsigned char *IArchetype::getEntityData(EntityShortId e) const {
 }
 
 EntityReference &IArchetype::get(EntityShortId e) {
-  if (!contains(e)) return NullEntityReference;
+  if (!isAlive(e)) return NullEntityReference;
   return uncheckedGet(e);
 }
 
@@ -143,7 +143,7 @@ EntityReference &IArchetype::NewEntity() {
   return *ptr;
 }
 
-void IArchetype::remove(EntityShortId e) {
+void IArchetype::kill(EntityShortId e) {
   if (e >= ecursor || cemetery.Contains(e)) return;
   auto data = getEntityData(e);
   // Before removing hook.
@@ -157,6 +157,21 @@ void IArchetype::remove(EntityShortId e) {
   alives.erase(e);
 }
 
+void IArchetype::delayedKill(EntityShortId e) {
+  if (isAlive(e)) {
+    toKill.insert(e);
+    world->setDirtyHasDelayed(id);
+  }
+}
+
+void IArchetype::apply() {
+  // Kill entities to be killed.
+  for (auto e : toKill)
+    kill(e);
+  toKill.clear();
+  // TODO: create entities to be born.
+}
+
 void IArchetype::ForEach(const Accessor &cb) {
   ForEachUntil([&cb](EntityReference &ref) {
     cb(ref);
@@ -166,10 +181,11 @@ void IArchetype::ForEach(const Accessor &cb) {
 
 void IArchetype::ForEachUntil(const AccessorUntil &cb) {
   // Scan the set alives from begin to end, in order of address layout.
-  // It's undefined behavor to remove or add entities during the foreach, in the callback.
-  // Use an ordered set of alive entity short ids instead of scan from 0 to cursor directly for faster speed (less miss).
+  // It's undefined behavor to kill or add entities during the foreach, in the callback.
+  // Use an ordered set of alive entity short ids instead of scan from 0 to cursor directly
+  // for faster speed (less miss).
   for (auto e : alives) {
-    if (!cemetery.Contains(e))
+    if (!cemetery.Contains(e) && !toBorn.contains(e))
       if (cb(uncheckedGet(e))) break;
   }
 }
@@ -239,13 +255,19 @@ Matcher::ArchetypeIdBitset Matcher::matchNone(const Signature &signature) const 
 bool World::IsAlive(EntityId eid) const {
   auto aid = __internal::unpack_x(eid);
   if (aid >= archetypes.size()) return false;
-  return archetypes[aid]->contains(__internal::unpack_y(eid));
+  return archetypes[aid]->isAlive(__internal::unpack_y(eid));
 }
 
 void World::Kill(EntityId eid) {
   auto aid = __internal::unpack_x(eid);
   if (aid >= archetypes.size()) return;
-  archetypes[aid]->remove(__internal::unpack_y(eid));
+  archetypes[aid]->kill(__internal::unpack_y(eid));
+}
+
+void World::DelayedKill(EntityId eid) {
+  auto aid = __internal::unpack_x(eid);
+  if (aid >= archetypes.size()) return;
+  archetypes[aid]->delayedKill(__internal::unpack_y(eid));
 }
 
 EntityReference &World::Get(EntityId eid) const {
@@ -270,7 +292,13 @@ void World::RemoveCallback(uint32_t id) {
   callbacks.erase(it);
 }
 
-// Push a callback function into management to subscribe create and remove enntities events
+void World::ApplyDelayed() {
+  for (auto aid : dirtyArchetypeIds)
+    archetypes[aid]->apply();
+  archetypes.clear();
+}
+
+// Push a callback function into management to subscribe create and kill enntities events
 // inside any of given archetypes.
 uint32_t World::pushCallback(int flag, const __internal::AIdsPtr aids, const Callback::Func &func) {
   uint32_t id = nextCallbackId++; // TODO: handle overflow?

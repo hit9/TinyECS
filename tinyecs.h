@@ -107,14 +107,15 @@ public:
 
 namespace __internal {
 
-class IArchetypeEntityApi { // for EntityReference.
+class IArchetypeEntityApi { // Archetype api for EntityReference.
 public:
   virtual ArchetypeId GetId() const = 0;
 
 protected:
   // ~~~~~~ for IArchetype to override ~~~~~~
-  virtual bool contains(EntityShortId e) const = 0;
-  virtual void remove(EntityShortId e) = 0;
+  virtual bool isAlive(EntityShortId e) const = 0;
+  virtual void kill(EntityShortId e) = 0;
+  virtual void delayedKill(EntityShortId e) = 0;
   virtual unsigned char *getComponentRawPtr(unsigned char *data, ComponentId cid) const = 0;
   virtual unsigned char *uncheckedGetComponentRawPtr(unsigned char *data, ComponentId cid) const = 0;
   // ~~~~ templated api method ~~~~~
@@ -142,6 +143,8 @@ public:
       : a(a), data(data), id(id) {}
   EntityReference() = default; // for __internal::NullEntityReference
   ~EntityReference() = default;
+  inline EntityId GetId() const { return id; }
+  inline ArchetypeId GetArchetypeId() const { return a->GetId(); }
   bool operator==(const EntityReference &o) const { return data == o.data; }
   // Returns a component of this entity by given component type.
   template <typename Component> inline Component &Get() { return *a->getComponentPtr<Component>(data); }
@@ -149,10 +152,15 @@ public:
   template <typename Component> inline Component &UncheckedGet() {
     return *a->uncheckedGetComponentPtr<Component>(data);
   }
-  inline EntityId GetId() const { return id; }
-  inline bool IsAlive(void) const { return a != nullptr && a->contains(__internal::unpack_y(id)); }
-  inline void Kill() { a->remove(__internal::unpack_y(id)); }
-  inline ArchetypeId GetArchetypeId() const { return a->GetId(); }
+  // Kill this entity right now.
+  inline void Kill() { a->kill(__internal::unpack_y(id)); }
+  // Mark this entity to be killed later.
+  // Finllay we should call world.ApplyDelayed() to make it take effect.
+  inline void DelayedKill() { a->delayedKill(__internal::unpack_y(id)); }
+  // Returns true if this entity is alive.
+  // For delay created entity, it's not alive until a world.ApplyDelayed() is called.
+  // For delay killed entity, it's still alive until a world.ApplyDelayed() is called.
+  inline bool IsAlive(void) const { return a != nullptr && a->isAlive(__internal::unpack_y(id)); }
 };
 
 // Accessor is a function to access an entity via an entity reference.
@@ -170,12 +178,16 @@ namespace __internal { // DO NOT USE NAMES FROM __internal
 class IWorld {
 protected:
   // Hook functions for IArchetype to trigger callbacks on creating and removing entities.
-  virtual void afterEntityCreated(ArchetypeId a, EntityShortId e) = 0;
-  virtual void beforeEntityRemoved(ArchetypeId a, EntityShortId e) = 0;
   void setLastCreatedEntityId(EntityId eid);
   inline void clearLastCreatedEntityId() { lastCreatedEntityIdSet = false; }
   friend class IArchetype;  // for setLastCreatedEntityId and clearLastCreatedEntityId
   friend class IFieldIndex; // for lastCreatedEntityId
+
+  // ~~~~~~~~ for class World to override ~~~~~~~
+  virtual void afterEntityCreated(ArchetypeId a, EntityShortId e) = 0;
+  virtual void beforeEntityRemoved(ArchetypeId a, EntityShortId e) = 0;
+  virtual void setDirtyHasDelayed(ArchetypeId a) = 0;
+
 private:
   EntityId lastCreatedEntityId = 0;
   bool lastCreatedEntityIdSet = false;
@@ -216,8 +228,27 @@ private:
   IWorld *world = nullptr;
   const Signature &signature; // ref to static storage
 
-  std::set<EntityShortId> alives; // faster alive entities iteration than plat blocks
-  Cemetery cemetery;              // for recycle & O(1) liveness checks
+  //                              +----------------------------------------+
+  //                              |                   Kill                 |
+  //                              +                                        |
+  //                    Apply     |      DelayedKill             Apply     v
+  //          {toBorn} ------> {alives} ------------> {toKill} -------> {cemetery}
+  //             ^               ^  ^                                      |
+  //  DelayedNew |           New |  |           Recycle id                 |
+  //                       ------+  +--------------------------------------+
+  //
+  // faster alive entities iteration than over plat blocks
+  std::set<EntityShortId> alives;
+  // for recycle & fast liveness checks:
+  // IsAlive: !toBorn && !cemetery; both O(1)
+  Cemetery cemetery;
+  // toBorn:
+  //    Mark: stores data directly in blocks and add to set toBorn (not alives).
+  //    Apply: move from set toBorn to set alives, wthout copying entity data.
+  // toKill:
+  //    Mark: add to set toKill.
+  //    Apply: move from set alives to cemetery, and remove from toKill.
+  std::unordered_set<EntityShortId> toBorn, toKill;
 
   // Use a fixed-size array for faster performance than an unordered_map.
   // cols[componentID] => column in this archetype for a component.
@@ -238,33 +269,43 @@ private:
   // avoiding buffer copying during vector capacity growing.
   std::vector<std::unique_ptr<unsigned char[]>> blocks;
 
+  // Returns a reference to the signature of this archetype.
+  inline const Signature &getSignature() const { return signature; };
   // Returns the data address of entity e.
+  // It doesn't care the entity's liveness, just return the data address should be.
   unsigned char *getEntityData(EntityShortId e) const;
   // Get EntityReference by given short entity id.
+  // Won't check the entity's liveness.
   inline EntityReference &uncheckedGet(EntityShortId e) {
     return *reinterpret_cast<EntityReference *>(getEntityData(e));
   }
   // Returns a reference to target entity by given short entity id.
+  // If the entity is not alive (dead or not born yet), returns NullEntityReference.
   EntityReference &get(EntityShortId e);
-  // Returns the signature of this archetype.
-  inline const Signature &getSignature() const { return signature; };
 
-  friend World;   // for get, uncheckedGet, getSignature
+  friend World;   // for get, uncheckedGet, getSignature, kill, isAlive, delayedKill
   friend IQuery;  // for get
   friend ICacher; // for get, uncheckedGet
 
+protected:
   // ~~~~ Implements IArchetypeEntityApi ~~~~~
-  // We use cemetery to test liveness rather than the alives set, because the former is O(1),
-  // and the latter is O(logN).
-  inline bool contains(EntityShortId e) const override { return e < ecursor && !cemetery.Contains(e); }
-  // kill an entity by short id. O(logN).
-  void remove(EntityShortId e) override;
   unsigned char *getComponentRawPtr(unsigned char *data, ComponentId cid) const override;
   inline unsigned char *uncheckedGetComponentRawPtr(unsigned char *data, ComponentId cid) const override {
     return data + cols[cid] * cellSize;
   }
+  // We use cemetery along with toBorn to test liveness rather than the set alives,
+  // because the former is O(1), and the latter is O(logN).
+  inline bool isAlive(EntityShortId e) const override {
+    return e < ecursor && !cemetery.Contains(e) && !toBorn.contains(e);
+  }
+  // kill an entity by short id at once. O(logN).
+  void kill(EntityShortId e) override;
+  // Mark an entity to be killed. O(1)
+  // If the given entity is already dead, does nothing.
+  void delayedKill(EntityShortId e) override;
+  // Apply delayed entity creations and kills.
+  void apply();
 
-protected:
   // ~~~~~~~ for Archetype Impl ~~~~~~~~~~
   // Call destructors of all components of an entity by providing entity data address.
   virtual void destructComponents(unsigned char *data) = 0;
@@ -280,11 +321,11 @@ public:
   inline ArchetypeId GetId() const override { return id; }
   // Returns number of blocks.
   inline size_t NumBlocks() const { return blocks.size(); }
-  // Returns number of alive entities.
-  // Note: cemetery should always not larger than ecursor.
-  inline size_t NumEntities() const { return ecursor - cemetery.Size(); }
-  // Returns the block size.
+  // Returns the size of a single block.
   inline size_t BlockSize() const { return blockSize; }
+  // Returns number of alive entities.
+  // Note: cemetery+toBorn should always not larger than ecursor, thus minus on size_t is safe.
+  inline size_t NumEntities() const { return ecursor - cemetery.Size() - toBorn.size(); }
   // Creates a new entity, try to recycle at first, otherwise increases internal entity short id cursor.
   // Returns a reference to the created entity.
   // Possible allocation: if the underlying blocks are not enough, will allocate a new one.
@@ -391,6 +432,9 @@ public:
   [[nodiscard]] bool IsAlive(EntityId eid) const;
   // Kill an entity by id.
   void Kill(EntityId eid);
+  // Mark an entity to be killed later.
+  // Finllay we should call world.ApplyDelayed() to make it take effect.
+  void DelayedKill(EntityId eid);
   // Returns the reference to an entity by entity id.
   // Returns the NullEntityReference if given entity does not exist, of which method IsAlive() == false,
   [[nodiscard]] EntityReference &Get(EntityId eid) const;
@@ -410,15 +454,21 @@ public:
   // Remove callback from management by callback id.
   void RemoveCallback(uint32_t id);
   inline size_t NumCallbacks() const { return callbacks.size(); }
+  // Apply delayed entity creations and killings to all archetypes.
+  void ApplyDelayed();
 
 protected:
   // Impls IWorld
   void afterEntityCreated(ArchetypeId a, EntityShortId e) override { triggerCallbacks(a, e, 0); }
   void beforeEntityRemoved(ArchetypeId a, EntityShortId e) override { triggerCallbacks(a, e, 1); }
+  virtual void setDirtyHasDelayed(ArchetypeId a) override { dirtyArchetypeIds.insert(a); }
 
 private:
   std::vector<std::unique_ptr<__internal::IArchetype>> archetypes;
   std::unique_ptr<__internal::Matcher> matcher;
+
+  // stores the archetypes which contains entities to be born and kill.
+  std::unordered_set<ArchetypeId> dirtyArchetypeIds;
 
   /// ~~~~~~~~~~ Callback ~~~~~~~~~~~~~~~~~
   struct Callback {
