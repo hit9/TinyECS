@@ -212,14 +212,19 @@ private:
 class IArchetype : public IArchetypeEntityApi {
 private:
   ArchetypeId id;
-  EntityShortId ecursor = 0;      // e (entity short id) cursor.
+  EntityShortId ecursor = 0; // e (entity short id) cursor.
+  IWorld *world = nullptr;
+  const Signature &signature; // ref to static storage
+
   std::set<EntityShortId> alives; // faster alive entities iteration than plat blocks
   Cemetery cemetery;              // for recycle & O(1) liveness checks
-  const Signature &signature;     // ref to static storage
+
   // Use a fixed-size array for faster performance than an unordered_map.
   // cols[componentID] => column in this archetype for a component.
   // Max memory usage estimate in a world:
   // N(archetypes) x N(components) * sizeof(uint16_t) = 4096 * 128 * 2 = 1MB
+  static const size_t numRows = MaxNumEntitiesPerBlock;
+  const size_t numCols, cellSize, rowSize, blockSize;
   uint16_t cols[MaxNumComponents];
   // Block layout:
   //
@@ -232,11 +237,8 @@ private:
   // The vector stores pointers of block buffer, not the block itself,
   // avoiding buffer copying during vector capacity growing.
   std::vector<std::unique_ptr<unsigned char[]>> blocks;
-  static const size_t numRows = MaxNumEntitiesPerBlock;
-  const size_t numCols, cellSize, rowSize, blockSize;
-  IWorld *world = nullptr;
 
-  // Returns the data address of entity e at column col.
+  // Returns the data address of entity e.
   unsigned char *getEntityData(EntityShortId e) const;
   // Get EntityReference by given short entity id.
   inline EntityReference &uncheckedGet(EntityShortId e) {
@@ -261,6 +263,7 @@ private:
   inline unsigned char *uncheckedGetComponentRawPtr(unsigned char *data, ComponentId cid) const override {
     return data + cols[cid] * cellSize;
   }
+
 protected:
   // ~~~~~~~ for Archetype Impl ~~~~~~~~~~
   // Call destructors of all components of an entity by providing entity data address.
