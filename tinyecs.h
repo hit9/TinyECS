@@ -14,6 +14,7 @@
 #include <functional>    // std::function
 #include <map>           // std::map, std::multimap
 #include <memory>        // std::unique_ptr, std::shared_ptr
+#include <set>           // std::set
 #include <stdexcept>     // std::runtime_error
 #include <string>        // std::string
 #include <string_view>   // std::string_view
@@ -186,7 +187,7 @@ public:
   static const size_t NumRowsPerBlock = MaxNumEntitiesPerBlock;
   inline size_t Size() const { return q.size(); }
   bool Contains(EntityShortId e) const; // O(1)
-  void Add(EntityShortId e);            // O(1)
+  void Add(EntityShortId e);            // Worst O(block allocation times), best O(1)
   EntityShortId Pop();                  // O(1)
 private:
   // FIFO reuse. use deque instead of list, reason:
@@ -211,9 +212,10 @@ private:
 class IArchetype : public IArchetypeEntityApi {
 private:
   ArchetypeId id;
-  EntityShortId ecursor = 0;  // e (entity short id) cursor.
-  Cemetery cemetery;          // for recycle & liveness checks
-  const Signature &signature; // ref to static storage
+  EntityShortId ecursor = 0;      // e (entity short id) cursor.
+  std::set<EntityShortId> alives; // faster alive entities iteration than plat blocks
+  Cemetery cemetery;              // for recycle & O(1) liveness checks
+  const Signature &signature;     // ref to static storage
   // Use a fixed-size array for faster performance than an unordered_map.
   // cols[componentID] => column in this archetype for a component.
   // Max memory usage estimate in a world:
@@ -234,13 +236,6 @@ private:
   const size_t numCols, cellSize, rowSize, blockSize;
   IWorld *world = nullptr;
 
-  // Implements IArchetypeEntityApi
-  inline bool contains(EntityShortId e) const override { return e < ecursor && !cemetery.Contains(e); }
-  void remove(EntityShortId e) override;
-  unsigned char *getComponentRawPtr(unsigned char *data, ComponentId cid) const override;
-  inline unsigned char *uncheckedGetComponentRawPtr(unsigned char *data, ComponentId cid) const override {
-    return data + cols[cid] * cellSize;
-  }
   // Returns the data address of entity e at column col.
   unsigned char *getEntityData(EntityShortId e) const;
   // Get EntityReference by given short entity id.
@@ -256,6 +251,16 @@ private:
   friend IQuery;  // for get
   friend ICacher; // for get, uncheckedGet
 
+  // ~~~~ Implements IArchetypeEntityApi ~~~~~
+  // We use cemetery to test liveness rather than the alives set, because the former is O(1),
+  // and the latter is O(logN).
+  inline bool contains(EntityShortId e) const override { return e < ecursor && !cemetery.Contains(e); }
+  // kill an entity by short id. O(logN).
+  void remove(EntityShortId e) override;
+  unsigned char *getComponentRawPtr(unsigned char *data, ComponentId cid) const override;
+  inline unsigned char *uncheckedGetComponentRawPtr(unsigned char *data, ComponentId cid) const override {
+    return data + cols[cid] * cellSize;
+  }
 protected:
   // ~~~~~~~ for Archetype Impl ~~~~~~~~~~
   // Call destructors of all components of an entity by providing entity data address.
@@ -277,7 +282,10 @@ public:
   inline size_t NumEntities() const { return ecursor - cemetery.Size(); }
   // Returns the block size.
   inline size_t BlockSize() const { return blockSize; }
-  // Creates a new entity, recycle at first, otherwise increases internal entity short id.
+  // Creates a new entity, try to recycle at first, otherwise increases internal entity short id cursor.
+  // Returns a reference to the created entity.
+  // Possible allocation: if the underlying blocks are not enough, will allocate a new one.
+  // Time complexity: O(logN) to maintain the set alives.
   EntityReference &NewEntity();
   // Run given callback function for all alive entities in this archetype.
   void ForEach(const Accessor &cb);
@@ -908,8 +916,7 @@ public:
   // Cache iteration ForEach methods (in-place iteration).
   // The order of iteration is according to the entity ids from small to large,
   // and entities in the same archetype will be accessed next to each other.
-  // We always guarantee the callback won't touch a dead entity.
-  // But it's **undefined behavior** to create/remove entities, or update indexes associated with this
+  // It's **undefined behavior** to create/remove entities, or update indexes associated with this
   // cacher's in given callback. For such situations, consider to create and remove entities at frame
   // begin or end, or just use Collect() to safely work on a copy.
   void ForEach(const Accessor &cb);
@@ -1020,7 +1027,6 @@ public:
   // 1. If filters are provided, apply filters and then iterates matched entities for each archetype.
   // 2. Otherwise, this is a simple query just about some archetypes, for each archetype, run with
   //    all entities managed by archetypes.
-  // We always guarantee the callback won't touch a dead entity, and the iteration will eventually end.
   // It's **undefined behavior** if the callback contains logics that creates or removes entities.
   // For such situations, consider to create and remove entities at frame begin or end, or just
   // use Collect() to safely work on a copy.

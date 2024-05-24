@@ -137,12 +137,14 @@ EntityReference &IArchetype::NewEntity() {
   constructComponents(data);
   // After created
   world->clearLastCreatedEntityId();
+  // inserts before OnEntityCreated callbacks called.
+  alives.insert(e);
   world->afterEntityCreated(id, e);
   return *ptr;
 }
 
 void IArchetype::remove(EntityShortId e) {
-  if (e >= ecursor) return;
+  if (e >= ecursor || cemetery.Contains(e)) return;
   auto data = getEntityData(e);
   // Before removing hook.
   world->beforeEntityRemoved(id, e);
@@ -150,7 +152,9 @@ void IArchetype::remove(EntityShortId e) {
   destructComponents(data);
   // Call destructor of EntityReference.
   reinterpret_cast<EntityReference *>(data)->~EntityReference();
+  // Remove from alives and add to cemetery.
   cemetery.Add(e);
+  alives.erase(e);
 }
 
 void IArchetype::ForEach(const Accessor &cb) {
@@ -161,18 +165,10 @@ void IArchetype::ForEach(const Accessor &cb) {
 }
 
 void IArchetype::ForEachUntil(const AccessorUntil &cb) {
-  // It's important to scan entities in order of address layout.
-  // So we count the short entity id from 0 to ecursor.
-
-  // Copy the ecursor in advance as the iteration end,
-  // to avoid possible entities creations while iterating, make sure
-  // the iteration will eventually end.
-  //
-  // And it's safe to remove entities in the callback, this doesn't
-  // affect the iteration counter, and we have checked the existence
-  // for each short id before performing a UncheckedGet call.
-  auto end = ecursor;
-  for (EntityShortId e = 0; e < end; e++) {
+  // Scan the set alives from begin to end, in order of address layout.
+  // It's undefined behavor to remove or add entities during the foreach, in the callback.
+  // Use an ordered set of alive entity short ids instead of scan from 0 to cursor directly for faster speed (less miss).
+  for (auto e : alives) {
     if (!cemetery.Contains(e))
       if (cb(uncheckedGet(e))) break;
   }
