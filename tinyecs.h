@@ -1197,8 +1197,8 @@ public:
   // Executes the query, and copy entity reference results to given vector.
   // The order of collected entities is arranged from small to large by entity id.
   void Collect(std::vector<EntityReference> &vec);
-  // Executes the query, and copy entity reference results to given vector until the tester function returns true.
-  // Notes that the entity makes tester returns true won't be collected.
+  // Executes the query, and copy entity reference results to given vector until the tester function returns
+  // true. Notes that the entity makes tester returns true won't be collected.
   void CollectUntil(std::vector<EntityReference> &vec, AccessorUntil &tester);
   // CollectUntil that allows passing in a temporary tester&&.
   inline void CollectUntil(std::vector<EntityReference> &vec, AccessorUntil &&tester) {
