@@ -31,14 +31,14 @@ static const size_t MaxNumComponents = 128;
 static const size_t MaxNumArchetypesPerWorld = 4096; // Enough?
 
 using size_t = std::size_t;
-using ComponentId = uint16_t;   // global auto-incremented
+using ComponentId = uint16_t;   // global auto-incremented id for each component class.
 using ArchetypeId = uint16_t;   // up to 2^13-1 = 8191 =  0x1fff
 using EntityShortId = uint32_t; // up to 2^19-1 = 524287(52.4w) = 0x7ffff
 using EntityId = uint32_t;      // Long entity id => packed archetypeId with EntityShortId
 
 using Signature = std::bitset<MaxNumComponents>;
 
-// Forward declarations.
+// ~~~~~~~~ Forward declarations. ~~~~~~~~~~
 class World;
 class EntityReference;
 namespace __internal { // DO NOT USE NAMES FROM __internal
@@ -51,10 +51,13 @@ namespace __internal { // DO NOT USE NAMES FROM __internal
 
 using EntityIdSet = std::unordered_set<EntityId>; // set of entity ids
 using AIds = std::unordered_set<ArchetypeId>;     // set of archetype ids.
-using AIdsPtr = std::shared_ptr<AIds>;
+using AIdsPtr = std::shared_ptr<AIds>;            // shared pointer to a set of archetype ids.
 
-// Layout of long entity id: 32bits = [ archetype id (13bits)  ][  entity short id (19bits) ]
+// Layout of an entity id:
+//                    <x>                         <y>
+// 32bits = [ archetype id (13bits)  ][  short entity id (19bits) ]
 inline EntityId pack(ArchetypeId x, EntityShortId y) { return ((x & 0x1fff) << 19) | (y & 0x7ffff); }
+// Packer and Unpacker between entity id and (archetype id + short entity id)
 inline ArchetypeId unpack_x(EntityId eid) { return (eid >> 19) & 0x1fff; }
 inline EntityShortId unpack_y(EntityId eid) { return eid & 0x7ffff; }
 
@@ -64,7 +67,7 @@ inline EntityShortId unpack_y(EntityId eid) { return eid & 0x7ffff; }
 
 class IComponentBase {
 protected:
-  static ComponentId nextId;
+  static ComponentId nextId; // initialized in tinyecs.cc
 };
 
 template <typename Component> class IComponent : public IComponentBase {
@@ -76,10 +79,11 @@ public:
   }
 };
 
-// Component parameters shouldn't contains duplicates, why it works:
+// Component parameters shouldn't contain duplicates, why it works:
 // in C++, a class is not allowed to inherit from the same base class twice.
 template <typename Component> class NoDuplicateComponents {};
 
+// A class composed of a sequence of component classes.
 template <typename... Components> class ComponentSequence : NoDuplicateComponents<Components>... {
   inline static Signature signature;
   inline static bool initialized = false;
@@ -130,11 +134,13 @@ protected:
 
 } // namespace __internal
 
-// A temporary reference to an entity's data, it should keep lightweight enough.
+// A temporary reference to an entity's data, we should keep it lightweight enough.
 class EntityReference {
 private:
   __internal::IArchetypeEntityApi *a = nullptr;
-  // Internal note: we can't use pointer this instead of data, since we allow copy a reference.
+  // Internal note: although there's an entity reference stored in the archetype, at the head of this entity's
+  // data row. But we still need to store an address of the data rather than casting pointer `this` to get the
+  // data pointer, because we allow to copy an entity reference.
   unsigned char *data = nullptr;
   EntityId id = 0;
 
@@ -143,29 +149,40 @@ public:
       : a(a), data(data), id(id) {}
   EntityReference() = default; // for __internal::NullEntityReference
   ~EntityReference() = default;
+  // Returns the id of this entity.
   inline EntityId GetId() const { return id; }
+  // Returns the id of this entity's archetype.
   inline ArchetypeId GetArchetypeId() const { return a->GetId(); }
+  // Two entity references are equal if their data address is the same.
   bool operator==(const EntityReference &o) const { return data == o.data; }
   // Returns a component of this entity by given component type.
+  // Throws a std::runtime_error if the given component is not part of this entity's archetype.
   template <typename Component> inline Component &Get() { return *a->getComponentPtr<Component>(data); }
-  // UncheckedGet is similar to Get(), but won't validate column.
+  // UncheckedGet is similar to Get(), but won't validate column's legality.
+  // Use it if the component is guaranteed to be part of this entity's archetype.
   template <typename Component> inline Component &UncheckedGet() {
     return *a->uncheckedGetComponentPtr<Component>(data);
   }
   // Kill this entity right now.
   inline void Kill() { a->kill(__internal::unpack_y(id)); }
   // Mark this entity to be killed later.
-  // Finllay we should call world.ApplyDelayedKill() to make it take effect.
+  // Finally we should call world.ApplyDelayedKill() to make it take effect.
   inline void DelayedKill() { a->delayedKill(__internal::unpack_y(id)); }
   // Returns true if this entity is alive.
   // For delay created entity, it's not alive until a world.ApplyDelayedNewEntity() is called.
   // For delay killed entity, it's still alive until a world.ApplyDelayedKill() is called.
   inline bool IsAlive(void) const { return a != nullptr && a->isAlive(__internal::unpack_y(id)); }
+  // Constructs a component of this entity.
+  // The component class must have a corresponding constructor.
+  // And the field index binding must be done in that constructor.
+  template <typename Component, typename... Args> void Construct(Args... args) {
+    (a->getComponentPtr<Component>(data))->Component(std::forward<Args>(args)...);
+  }
 };
 
-// Accessor is a function to access an entity via an entity reference.
+// Accessor is a function to access an entity via its entity reference.
 using Accessor = std::function<void(EntityReference &)>;
-// AccessorUntil the Accessor that stops the iteration earlier if the callback returns true.
+// AccessorUntil is the Accessor that stops the iteration earlier once the callback returns true.
 using AccessorUntil = std::function<bool(EntityReference &)>;
 
 //////////////////////////
@@ -177,24 +194,26 @@ namespace __internal { // DO NOT USE NAMES FROM __internal
 // Internal World interface class.
 class IWorld {
 protected:
-  // Hook functions for IArchetype to trigger callbacks on creating and removing entities.
+  // ~~~~~~ Hook functions for IArchetype ~~~~
   void setLastCreatedEntityId(EntityId eid);
   inline void clearLastCreatedEntityId() { lastCreatedEntityIdSet = false; }
-  friend class IArchetype;  // for setLastCreatedEntityId and clearLastCreatedEntityId
-  friend class IFieldIndex; // for lastCreatedEntityId
-
   // ~~~~~~~~ for class World to override ~~~~~~~
+  // trigger callbacks on creating and removing entities.
   virtual void afterEntityCreated(ArchetypeId a, EntityShortId e) = 0;
   virtual void beforeEntityRemoved(ArchetypeId a, EntityShortId e) = 0;
+  // for archetype to self-mark which contains delayed stuffs.
   virtual void setArchetypeHasDelayedNew(ArchetypeId a) = 0;
   virtual void setArchetypeHasDelayedKill(ArchetypeId a) = 0;
+
+  friend class IArchetype;
+  friend class IFieldIndex; // for lastCreatedEntityId
 
 private:
   EntityId lastCreatedEntityId = 0;
   bool lastCreatedEntityIdSet = false;
 };
 
-// Cemetery stores short ids for dead entities,
+// Cemetery stores short ids of dead entities.
 class Cemetery {
 public:
   static const size_t NumRowsPerBlock = MaxNumEntitiesPerBlock;
@@ -221,14 +240,20 @@ private:
   size_t bound = 0;
 };
 
+// Conversion functions between entity reference pointer and raw data pointer.
+inline auto toref(unsigned char *data) { return reinterpret_cast<EntityReference *>(data); }
+inline auto todata(EntityReference *ref) { return reinterpret_cast<unsigned char *>(ref); }
+
 // Internal Archetype interface class.
 class IArchetype : public IArchetypeEntityApi {
 private:
   ArchetypeId id;
-  EntityShortId ecursor = 0; // e (entity short id) cursor.
+  EntityShortId ecursor = 0; // e (short entity id) cursor.
   IWorld *world = nullptr;
-  const Signature &signature; // ref to static storage
+  const Signature &signature; // ref to static storage in class ComponentSequence.
 
+  // Schematic diagram of entity life cycle::
+  //
   //                              +----------------------------------------+
   //                              |                   Kill                 |
   //                              +                                        |
@@ -237,22 +262,27 @@ private:
   //             ^               ^  ^                                      |
   //  DelayedNew |           New |  |           Recycle id                 |
   //                       ------+  +--------------------------------------+
-  //
-  // faster alive entities iteration than over plat blocks
+
+  // use an ordered set to store short ids of alive entities,
+  // for faster ForEach(), than iterating one by one in a block.
   std::set<EntityShortId> alives;
-  // for recycle & fast liveness checks:
+  // for id and space recycle & fast liveness checkings:
   // IsAlive: !toBorn && !cemetery; both O(1)
   Cemetery cemetery;
-  // toBorn:
-  //    Mark: stores data directly in blocks and add to set toBorn (not alives).
-  //    Apply: move from set toBorn to set alives, wthout copying entity data.
-  // toKill:
-  //    Mark: add to set toKill.
-  //    Apply: move from set alives to cemetery, and remove from toKill.
-  std::unordered_set<EntityShortId> toBorn, toKill;
+  // [ DelayedNew ]
+  //   Mark: stores data directly in blocks and add to map toBorn (not alives).
+  //   Apply: move from map toBorn to set alives, wthout copying entity data.
+  // [ DelayedKill ]
+  //   Mark: add to set toKill.
+  //   Apply: move from set alives to cemetery, and remove from toKill.
+  std::unordered_set<EntityShortId> toKill;
+  // use an unordered_map instead of an unordered_set for toBorn, stores the initializer.
+  std::unordered_map<EntityShortId, Accessor> toBorn;
 
   // Use a fixed-size array for faster performance than an unordered_map.
-  // cols[componentID] => column in this archetype for a component.
+  // Because it's very often to get a component of an entity reference.
+  // It's supposed that the total number of components is very limited.
+  // cols[componentID] => column number in this archetype.
   // Max memory usage estimate in a world:
   // N(archetypes) x N(components) * sizeof(uint16_t) = 4096 * 128 * 2 = 1MB
   static const size_t numRows = MaxNumEntitiesPerBlock;
@@ -273,14 +303,12 @@ private:
   // Returns a reference to the signature of this archetype.
   inline const Signature &getSignature() const { return signature; };
   // Returns the data address of entity e.
-  // It doesn't care the entity's liveness, just return the data address should be.
+  // It doesn't care the entity's liveness, just return the data address that should be.
   unsigned char *getEntityData(EntityShortId e) const;
   // Get EntityReference by given short entity id.
   // Won't check the entity's liveness.
-  inline EntityReference &uncheckedGet(EntityShortId e) {
-    return *reinterpret_cast<EntityReference *>(getEntityData(e));
-  }
-  // Returns a reference to target entity by given short entity id.
+  inline EntityReference &uncheckedGet(EntityShortId e) { return *toref(getEntityData(e)); }
+  // Returns a reference to the target entity by giving a short entity id.
   // If the entity is not alive (dead or not born yet), returns NullEntityReference.
   EntityReference &get(EntityShortId e);
 
@@ -294,6 +322,7 @@ protected:
   inline unsigned char *uncheckedGetComponentRawPtr(unsigned char *data, ComponentId cid) const override {
     return data + cols[cid] * cellSize;
   }
+  // Check if given entity is alive.
   // We use cemetery along with toBorn to test liveness rather than the set alives,
   // because the former is O(1), and the latter is O(logN).
   inline bool isAlive(EntityShortId e) const override {
@@ -316,17 +345,14 @@ protected:
   //     What's more, allocates a new block on need.
   std::pair<EntityShortId, unsigned char *> allocateForNewEntity();
   // Makes an entity to be alive in the world.
-  // 1. Constructs the entity reference.
-  // 2. Constructs each component of this entity.
-  // 3. Adds to set alives.
-  void doNewEntity(EntityShortId e, unsigned char *data, EntityReference *ref);
+  void doNewEntity(EntityShortId e, EntityReference &ref, Accessor &initializer);
   // Apply all delayed entity creations.
   void applyDelayedNewEntity();
 
   // ~~~~~~~ for Archetype Impl ~~~~~~~~~~
-  // Call destructors of all components of an entity by providing entity data address.
+  // Call default destructors of all components of an entity by providing entity data address.
   virtual void destructComponents(unsigned char *data) = 0;
-  // Call constructors of all components of an entity by providing entity data address.
+  // Call default constructors of all components of an entity by providing entity data address.
   virtual void constructComponents(unsigned char *data) = 0;
 
 public:
@@ -340,22 +366,31 @@ public:
   inline size_t NumBlocks() const { return blocks.size(); }
   // Returns the size of a single block.
   inline size_t BlockSize() const { return blockSize; }
-  // Returns number of alive entities.
+  // Returns the number of alive entities in this archetype.
   // Note: cemetery+toBorn should always not larger than ecursor, thus minus on size_t is safe.
   inline size_t NumEntities() const { return ecursor - cemetery.Size() - toBorn.size(); }
   // Creates a new entity at once, try to reuse dead entity's id and memory space at first,
   // otherwise allocating a new seat from underlying block, and allocates a new block on need.
   // Returns a reference to the created entity.
+  // Parameter initializer is a function to initialize all component data for the new entity.
+  // If the initializer is not provided, the default constructor will be called without any arguments.
   // Time complexity: O(logN) to maintain the set alives.
   EntityReference &NewEntity();
+  EntityReference &NewEntity(Accessor &initializer);
+  inline EntityReference &NewEntity(Accessor &&initializer) { return NewEntity(initializer); }
   // Creates a new entity later, returns a reference to the entity.
-  // Finllay we should call world.ApplyDelayedNewEntity() to make it take effect.
+  // Finally we should call world.ApplyDelayedNewEntity() to make it take effect.
+  // Parameter initializer is a function to initialize all component data for the new entity.
+  // If the initializer is not provided, the default constructor will be called without any arguments.
   // Although this entity is currently still considered non-alive, but we can still set its
   // component data via this reference. And this is the only chance the get its reference,
   // since for a to-born entity, it's considered non-alive,  we cannot call Get/ForEach queries to get a
   // reference to it.
-  // When the ApplyDelayedNewEntity is called, there's no entity data copy, the entity is just marked alive.
+  // When the ApplyDelayedNewEntity is called, there's no entity data copy, the entity is just marked
+  // alive.
   EntityReference &DelayedNewEntity();
+  EntityReference &DelayedNewEntity(Accessor &initializer);
+  inline EntityReference &DelayedNewEntity(Accessor &&initializer) { return DelayedNewEntity(initializer); }
   // Run given callback function for all alive entities in this archetype.
   // It will iterate entities in order of id from smaller to larger.
   void ForEach(const Accessor &cb);
@@ -420,6 +455,7 @@ protected:
 private:
   using CS = __internal::ComponentSequence<Components...>;
   static_assert(CS::N, "tinyecs: Archetype requires at least one component type parameter");
+  // CellSize is the max size of { components 's sizes, entity reference size }
   static constexpr size_t CellSize = std::max(CS::MaxComponentSize, sizeof(EntityReference));
   template <typename C> void destructComponent(unsigned char *data) { getComponentPtr<C>(data)->~C(); }
   template <typename C> void constructComponent(unsigned char *data) { new (getComponentPtr<C>(data)) C(); }
@@ -435,7 +471,7 @@ using CallbackEntityLifecycle = std::function<void(EntityReference &)>; // inter
 
 // CallbackAfterEntityCreated is a function to be executed right after an entity is created.
 using CallbackAfterEntityCreated = __internal::CallbackEntityLifecycle;
-// CallbackBeforeEntityRemoved is a function to be executed right before an entity is removing
+// CallbackBeforeEntityRemoved is a function to be executed right before an entity is removing.
 using CallbackBeforeEntityRemoved = __internal::CallbackEntityLifecycle;
 
 class World : public __internal::IWorld {
@@ -459,7 +495,7 @@ public:
   // Kill an entity by id.
   void Kill(EntityId eid);
   // Mark an entity to be killed later.
-  // Finllay we should call world.ApplyDelayedKill() to make it take effect.
+  // Finally we should call world.ApplyDelayedKill() to make it take effect.
   void DelayedKill(EntityId eid);
   // Returns the reference to an entity by entity id.
   // Returns the NullEntityReference if given entity does not exist, of which method IsAlive() == false,

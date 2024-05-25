@@ -16,11 +16,15 @@ ComponentId IComponentBase::nextId = 0;
 static EntityReference NullEntityReference = {};
 
 // Use std::ldiv for faster divide and module operations, than / and % operators.
-// from cppreference.com:
-// > On many platforms, a single CPU instruction obtains both the quotient and the remainder, and this
-// function may leverage that, although compilers are generally able to merge nearby / and % where suitable.
-// And static_cast is safe here, a short entity id covers from 0 to 0x7ffff, the `long` type guarantees at
-// least 32 bit size.
+//
+// From https://en.cppreference.com/w/cpp/numeric/math/div:
+//
+//   > On many platforms, a single CPU instruction obtains both the quotient and the remainder,
+//   > and this function may leverage that, although compilers are generally able to merge
+//   > nearby / and % where suitable.
+//
+// And the static_cast is safe here, a short entity id covers from 0 to 0x7ffff,
+// the `long` type guarantees at least 32 bit size.
 static inline std::pair<size_t, size_t> __div(EntityShortId e, size_t N) {
   // from cppreference: the returned std::ldiv_t might be either form of
   // { int quot; int rem; } or { int rem; int quot; }, the order of its members is undefined,
@@ -34,9 +38,9 @@ static inline std::pair<size_t, size_t> __div(EntityShortId e, size_t N) {
 /////////////////////////
 
 // Internal dev notes: Now a not so good solution is to temporarily store the ID of
-// the entity being created in the entire world before and after calling the constructor
-// of components during the creation of an entity, so that the index can initialize the
-// fieldproxy's value of this entity.
+// the entity being created in the entire world before and after calling the initializer
+// (constructor of components by default) during the creation of an entity, so that the
+// field index can initialize the fieldproxy's value of this entity.
 // Progess demo:
 //   IArchetype -> setLastCreatedEntityId()
 //   IArchetype -> call constructors of entity's components.
@@ -48,15 +52,15 @@ void IWorld::setLastCreatedEntityId(EntityId eid) {
   lastCreatedEntityIdSet = true;
 }
 
-// Returns true if given entity short id is inside the cemetery, aka already dead.
+// Returns true if given short entity id is inside the cemetery, aka already dead.
 bool Cemetery::Contains(EntityShortId e) const {
   if (e >= bound) return false;
   const auto [i, j] = __div(e, NumRowsPerBlock);
   return blocks[i]->test(j);
 }
 
-// Adds an entity short id into the cemetery.
-// If the underlying blocks are not enough, make a new one.
+// Adds a short entity id into the cemetery.
+// If the underlying blocks are not enough, allocates until enough.
 void Cemetery::Add(EntityShortId e) {
   // Allocates new blocks if not enough
   const auto [i, j] = __div(e, NumRowsPerBlock);
@@ -68,7 +72,7 @@ void Cemetery::Add(EntityShortId e) {
   q.push_back(e);
 }
 
-// Pops an entity short id from management.
+// Pops a short entity id from management.
 // Must guarantee this cemetery is not empty in advance.
 EntityShortId Cemetery::Pop() {
   auto e = q.front();
@@ -82,7 +86,7 @@ IArchetype::IArchetype(ArchetypeId id, IWorld *world, size_t numComponents, size
                        const Signature &signature)
     : id(id), world(world), numCols(numComponents + 1), cellSize(cellSize), rowSize(numCols * cellSize),
       blockSize(numRows * rowSize), signature(signature) {
-  // 0xffff means a invalid column.
+  // 0xffff stands for invalid column.
   std::fill_n(cols, MaxNumComponents, 0xffff);
   // col starts from 1, skipping the seat of entity reference
   int col = 1;
@@ -91,6 +95,8 @@ IArchetype::IArchetype(ArchetypeId id, IWorld *world, size_t numComponents, size
 }
 
 unsigned char *IArchetype::getEntityData(EntityShortId e) const {
+  // i is the index of the block in vector `blocks`, storing the given entity.
+  // j is the index of the row in the block `i`, storing the given entity
   const auto [i, j] = __div(e, numRows);
   return blocks[i].get() + j * rowSize;
 }
@@ -115,53 +121,61 @@ std::pair<EntityShortId, unsigned char *> IArchetype::allocateForNewEntity() {
     // Reuse dead entity id and space.
     e = cemetery.Pop();
     data = getEntityData(e);
+    // Reset the space to all zeros.
     std::fill_n(data, rowSize, 0);
   } else {
     // Increase the entity id cursor.
     e = ecursor++;
     if (e >= numRows * blocks.size()) {
-      // Allocate block if not enough
+      // Allocate a block if not enough
       blocks.push_back(std::make_unique<unsigned char[]>(blockSize));
+      // Flush the full block space to all zeros.
       std::fill_n(blocks.back().get(), blockSize, 0);
     }
     data = getEntityData(e);
   }
-  // Constructs an entity reference.
+  // Constructs an entity reference at the row's head.
   new (data) EntityReference(this, data, pack(id, e));
   return {e, data};
 }
 
-void IArchetype::doNewEntity(EntityShortId e, unsigned char *data, EntityReference *ref) {
+// 1. Add this entity to alives set.
+// 2. Constructs each component of this entity via initializer.
+// 3. Trigger callbacks listening for entity creations.
+void IArchetype::doNewEntity(EntityShortId e, EntityReference &ref, Accessor &initializer) {
   // The entity is marked alive.
   alives.insert(e);
   // Call constructors of each component for this entity.
   // Before the constructor is called, set the entity id to the world in advance,
   // Because the index will query the lastCreatedEntityId in the world.
   // And the component's constructor may bind some indexes then.
-  world->setLastCreatedEntityId(ref->GetId());
-  constructComponents(data);
+  world->setLastCreatedEntityId(ref.GetId());
+  initializer(ref);
+  // constructComponents(data);
   world->clearLastCreatedEntityId();
   world->afterEntityCreated(id, e);
 }
 
 void IArchetype::applyDelayedNewEntity() {
-  for (auto e : toBorn) {
+  for (auto &[e, initializer] : toBorn) {
     auto data = getEntityData(e);
-    auto ref = reinterpret_cast<EntityReference *>(data);
-    doNewEntity(e, data, ref);
+    auto &ref = *toref(data);
+    doNewEntity(e, ref, initializer);
   }
   toBorn.clear();
 }
 
 void IArchetype::kill(EntityShortId e) {
+  // Does nothing if given short id is invalid or already dead.
   if (e >= ecursor || cemetery.Contains(e)) return;
+  // If a kill is called on a to-born/to-kill entity, then it's going to die directly.
   auto data = getEntityData(e);
   // Before removing hook.
   world->beforeEntityRemoved(id, e);
   // Call destructor of each component.
   destructComponents(data);
   // Call destructor of EntityReference.
-  reinterpret_cast<EntityReference *>(data)->~EntityReference();
+  toref(data)->~EntityReference();
   // Remove from alives and add to cemetery.
   cemetery.Add(e);
   alives.erase(e);
@@ -182,21 +196,33 @@ void IArchetype::applyDelayedKill() {
 }
 
 EntityReference &IArchetype::NewEntity() {
+  // Call the default constructor for each component if the initializer is not provided.
+  return NewEntity([this](EntityReference &ref) { constructComponents(todata(&ref)); });
+}
+
+EntityReference &IArchetype::NewEntity(Accessor &initializer) {
+  // Allocates a seat for a new entity and call the initializer at once.
   auto [e, data] = allocateForNewEntity();
-  auto ref = reinterpret_cast<EntityReference *>(data); // pointer
-  doNewEntity(e, data, ref);
-  return *ref;
+  auto &ref = *toref(data);
+  doNewEntity(e, ref, initializer);
+  return ref;
 }
 
 EntityReference &IArchetype::DelayedNewEntity() {
+  // Call the default constructor for each component if the initializer is not provided.
+  return DelayedNewEntity([this](EntityReference &ref) { constructComponents(todata(&ref)); });
+}
+
+EntityReference &IArchetype::DelayedNewEntity(Accessor &initializer) {
   // A to-born entity is considered non-alive.
-  // But we have to pre-allocate a seat for it, its id and reference are aviable,
-  // then data can be set here in-place. In this design, we avoid data copy to
-  // support the "delayed new" feature.
+  // But we have to pre-allocate a seat for it, then its id and reference are available.
+  // And the data can be set here in-place. In this design, we avoid data copy to support
+  // the "delayed new entity" feature.
   auto [e, data] = allocateForNewEntity();
-  toBorn.insert(e);
-  auto ref = reinterpret_cast<EntityReference *>(data);
-  return *ref;
+  // here copy initializer function to store
+  toBorn.insert({e, initializer});
+  world->setArchetypeHasDelayedNew(id);
+  return *toref(data);
 }
 
 void IArchetype::ForEach(const Accessor &cb) {
@@ -208,9 +234,9 @@ void IArchetype::ForEach(const Accessor &cb) {
 
 void IArchetype::ForEachUntil(const AccessorUntil &cb) {
   // Scan the set alives from begin to end, in order of address layout.
-  // It's undefined behavor to kill or add entities during the foreach, in the callback.
-  // Use an ordered set of alive entity short ids instead of scan from 0 to cursor directly
+  // Use an ordered set of alive short entity ids instead of scan from 0 to cursor directly
   // for faster speed (less miss).
+  // It's undefined behavor to kill or add entities during the foreach, in the callback.
   for (auto e : alives) {
     if (!cemetery.Contains(e) && !toBorn.contains(e))
       if (cb(uncheckedGet(e))) break;
