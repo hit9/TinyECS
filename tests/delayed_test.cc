@@ -84,6 +84,12 @@ TEST_CASE("delayed/new") {
   q1.Collect(vec1), q2.Collect(vec2);
   REQUIRE(vec1 == std::vector<EntityReference>{w.Get(eid1), w.Get(eid3)});
   REQUIRE(vec2 == std::vector<EntityReference>{w.Get(eid2), w.Get(eid3)});
+
+  // Queries with index should also work
+  Query<E> q3(w, {index2 == "xyz"});
+  std::vector<EntityReference> vec3;
+    q3.PreMatch().Collect(vec3);
+    REQUIRE(vec3 == std::vector<EntityReference>{w.Get(eid3)});
 }
 
 TEST_CASE("delayed/kill") {

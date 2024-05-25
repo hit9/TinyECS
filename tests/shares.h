@@ -37,7 +37,7 @@ struct E {
     z.BindIndex(index2);
   }
   E() { BindIndexes(); }
-  E(int x, const std::string &z = "abc") :  x(x), z(z) { BindIndexes(); }
+  E(int x, const std::string &z = "abc") : x(x), z(z) { BindIndexes(); }
 };
 
 extern UnorderedFieldIndex<Status> index5;
