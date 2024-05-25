@@ -510,7 +510,7 @@ IQuery &IQuery::PreMatch() {
 // And then copy to sorted sets groupping by archetype ids.
 // Reason: expecting set ans is smaller after filters applied,
 // this reduces item count to sort.
-void IQuery::executeWithFilters(const AccessorUntil &cb) {
+void IQuery::executeWithFilters(const AccessorUntil &cb, bool reversed) {
   // Filter matched entities from indexes.
   EntityIdSet ans;
   applyFilters(filters, ans, [&ans, this](EntityId eid) {
@@ -523,10 +523,10 @@ void IQuery::executeWithFilters(const AccessorUntil &cb) {
   // in memory as possible.
   // TODO: any optimization ideas here to avoid sorting?
   std::set<EntityId> st(ans.begin(), ans.end());
-  executeWithinFilteredSet(cb, st);
+  executeWithinFilteredSet(cb, st, reversed);
 }
 
-void IQuery::executeWithinFilteredSet(const AccessorUntil &cb, const std::set<EntityId> &st) {
+void IQuery::executeWithinFilteredSet(const AccessorUntil &cb, const std::set<EntityId> &st, bool reversed) {
   if (!reversed) {
     executeWithinFilteredSetForward(cb, st);
     return;
@@ -559,7 +559,7 @@ void IQuery::executeWithinFilteredSetBackward(const AccessorUntil &cb, const std
 }
 
 // Executes given callback directly on each interested archetypes.
-void IQuery::executeForAll(const AccessorUntil &cb) {
+void IQuery::executeForAll(const AccessorUntil &cb, bool reversed) {
   if (!reversed) {
     executeForAllForward(cb);
     return;
@@ -612,55 +612,42 @@ IQuery &IQuery::ClearFilters() {
   return *this;
 }
 
-IQuery &IQuery::Reverse() {
-  reversed ^= 1;
-  return *this;
-}
-
 // Iterates each matched entities.
-void IQuery::ForEach(const Accessor &cb) {
-  ForEachUntil([&cb](EntityReference &ref) {
-    cb(ref);
-    return false;
-  });
+void IQuery::ForEach(const Accessor &cb, bool reversed) {
+  ForEachUntil(
+      [&cb](EntityReference &ref) {
+        cb(ref);
+        return false;
+      },
+      reversed);
 }
 
 // ForEachUntil is the ForEach that will stop once cb returns true.
-void IQuery::ForEachUntil(const AccessorUntil &cb) {
+void IQuery::ForEachUntil(const AccessorUntil &cb, bool reversed) {
   if (!ready) throw std::runtime_error("tinyecs: Query PreMatch not called");
   if (archetypes.empty()) return; // early quit.
-  if (filters.empty()) return executeForAll(cb);
-  executeWithFilters(cb);
+  if (filters.empty()) return executeForAll(cb, reversed);
+  executeWithFilters(cb, reversed);
 }
 
-void IQuery::Collect(std::vector<EntityReference> &vec) {
-  ForEachUntil([&vec](EntityReference &ref) {
-    vec.push_back(ref); // copy
-    return false;
-  });
+void IQuery::Collect(std::vector<EntityReference> &vec, bool reversed) {
+  ForEachUntil(
+      [&vec](EntityReference &ref) {
+        vec.push_back(ref); // copy
+        return false;
+      },
+      reversed);
 }
 
-void IQuery::CollectUntil(std::vector<EntityReference> &vec, AccessorUntil &tester) {
-  ForEachUntil([&vec, &tester](EntityReference &ref) {
-    // Stops early once the tester returns a true.
-    if (tester(ref)) return true;
-    vec.push_back(ref); // copy
-    return false;
-  });
-}
-
-Cacher<> IQuery::Cache() {
-  // std::greater and std::less aren't the same type.
-  // We have to wrap a lambda around them, or just make our own one.
-  // And don't mix in the `reversed` into the lambda function.
-  // We should make the compare as simple as possible for the cacher,
-  // no need for runtime checking `reversed` variable anymore for a cacher.
-  CacherCompare cmp;
-  if (!reversed) // less than
-    cmp = [](const EntityId a, const EntityId b) { return a < b; };
-  else // greater than
-    cmp = [](const EntityId a, const EntityId b) { return a > b; };
-  return Cacher<decltype(cmp)>(*this, world, archetypes, aids, filters, cmp);
+void IQuery::CollectUntil(std::vector<EntityReference> &vec, AccessorUntil &tester, bool reversed) {
+  ForEachUntil(
+      [&vec, &tester](EntityReference &ref) {
+        // Stops early once the tester returns a true.
+        if (tester(ref)) return true;
+        vec.push_back(ref); // copy
+        return false;
+      },
+      reversed);
 }
 
 //////////////////////////
@@ -743,27 +730,33 @@ void ICacher::clearCallbacks() {
 }
 
 // Executes given callback for each entity reference in cache.
-void ICacher::ForEach(const Accessor &cb) {
-  ForEachUntil([&cb](EntityReference &ref) {
-    cb(ref);
-    return false;
-  });
+void ICacher::ForEach(const Accessor &cb, bool reversed) {
+  ForEachUntil(
+      [&cb](EntityReference &ref) {
+        cb(ref);
+        return false;
+      },
+      reversed);
 }
 
-void ICacher::Collect(std::vector<EntityReference> &vec) {
-  ForEachUntil([&vec](EntityReference &ref) {
-    vec.push_back(ref); // copy
-    return false;
-  });
+void ICacher::Collect(std::vector<EntityReference> &vec, bool reversed) {
+  ForEachUntil(
+      [&vec](EntityReference &ref) {
+        vec.push_back(ref); // copy
+        return false;
+      },
+      reversed);
 }
 
-void ICacher::CollectUntil(std::vector<EntityReference> &vec, AccessorUntil &tester) {
-  ForEachUntil([&vec, &tester](EntityReference &ref) {
-    // stop early once tester given true.
-    if (tester(ref)) return true;
-    vec.push_back(ref); // copy
-    return false;
-  });
+void ICacher::CollectUntil(std::vector<EntityReference> &vec, AccessorUntil &tester, bool reversed) {
+  ForEachUntil(
+      [&vec, &tester](EntityReference &ref) {
+        // stop early once tester given true.
+        if (tester(ref)) return true;
+        vec.push_back(ref); // copy
+        return false;
+      },
+      reversed);
 }
 
 } // namespace __internal

@@ -1077,19 +1077,19 @@ public:
   // It's **undefined behavior** to create/remove entities, or update indexes associated with this
   // cacher's in given callback. For such situations, consider to create and remove entities at frame
   // begin or end, or just use Collect() to safely work on a copy.
-  void ForEach(const Accessor &cb);
-  inline void ForEach(const Accessor &&cb) { ForEach(cb); }
-  inline void ForEachUntil(const AccessorUntil &cb) { forEachUntil(cb); }
-  inline void ForEachUntil(const AccessorUntil &&cb) { forEachUntil(cb); }
+  void ForEach(const Accessor &cb, bool reversed = false);
+  inline void ForEach(const Accessor &&cb, bool reversed = false) { ForEach(cb, reversed); }
+  inline void ForEachUntil(const AccessorUntil &cb, bool reversed = false) { forEachUntil(cb, reversed); }
+  inline void ForEachUntil(const AccessorUntil &&cb, bool reversed = false) { forEachUntil(cb, reversed); }
 
   // Copy the cached entity references into given vector.
-  void Collect(std::vector<EntityReference> &vec);
+  void Collect(std::vector<EntityReference> &vec, bool reversed = false);
   // Collect the cached entity references into given vector until given tester returns a true.
   // Notes that the entity makes tester returns true won't be collected.
-  void CollectUntil(std::vector<EntityReference> &vec, AccessorUntil &tester);
+  void CollectUntil(std::vector<EntityReference> &vec, AccessorUntil &tester, bool reversed = false);
   // CollectUntil that allows passing in a temporary tester&&.
-  inline void CollectUntil(std::vector<EntityReference> &vec, AccessorUntil &&tester) {
-    CollectUntil(vec, tester);
+  inline void CollectUntil(std::vector<EntityReference> &vec, AccessorUntil &&tester, bool reversed = false) {
+    CollectUntil(vec, tester, reversed);
   }
 
 protected:
@@ -1097,7 +1097,7 @@ protected:
   // Virtual methods for following Cache class.
   virtual void insert(EntityId eid, const EntityReference &ref) = 0;
   virtual void erase(EntityId eid) = 0;
-  virtual void forEachUntil(const AccessorUntil &cb) = 0;
+  virtual void forEachUntil(const AccessorUntil &cb, bool reversed) = 0;
 
 private:
   //~~~~~~ content from the Query ~~~~~~
@@ -1119,9 +1119,7 @@ private:
 // For instance, if an entity is created and it matches the cache's interested components
 // and filters, then it will be added to the internal cache automatically. And the same
 // mechanism for entity removes.
-using CacherCompare = std::function<bool(const EntityId a, const EntityId b)>;
-
-template <typename Compare = CacherCompare> class Cacher : public ICacher {
+template <typename Compare = std::less<EntityId>> class Cacher : public ICacher {
   // Use a map instead of unordered_map, reason:
   // We should respect the continuity of entities in memory when iterating over the cache.
   // Entities in the same archetype are consecutive after sorting their ids.
@@ -1151,13 +1149,28 @@ public:
 protected:
   void insert(EntityId eid, const EntityReference &ref) override { cache.insert({eid, ref}); }
   void erase(EntityId eid) override { cache.erase(eid); }
-  void forEachUntil(const AccessorUntil &cb) override {
-    for (auto &[_, ref] : cache)
-      if (cb(ref)) break;
+  void forEachUntil(const AccessorUntil &cb, bool reversed) override {
+    if (!reversed) {
+      forEachUntilForward(cb);
+      return;
+    }
+    forEachUntilBackward(cb);
   }
 
 private:
   Container cache;
+
+  void forEachUntilForward(const AccessorUntil &cb) {
+    for (auto &[_, ref] : cache)
+      if (cb(ref)) break;
+  }
+
+  void forEachUntilBackward(const AccessorUntil &cb) {
+    for (auto it = cache.rbegin(); it != cache.rend(); ++it) {
+      auto ref = it->second;
+      if (cb(ref)) break;
+    }
+  }
 };
 
 //////////////////////////
@@ -1186,11 +1199,6 @@ public:
   // Clears filters.
   IQuery &ClearFilters();
 
-  // Tells the query we will iterate results in a reversed order.
-  // If you use an odd number of times, then the query iterates in reverse order.
-  // If it is an even number of times, it means there is no reverse.
-  IQuery &Reverse();
-
   // Execute the query, and call given callback for each matched entities **in place**.
   // The order of iteration is according to the entity ids from small to large,
   // and entities in the same archetype will be accessed next to each other.
@@ -1201,26 +1209,26 @@ public:
   // It's **undefined behavior** if the callback contains logics that creates or removes entities.
   // For such situations, consider to create and remove entities at frame begin or end, or just
   // use Collect() to safely work on a copy.
-  void ForEach(const Accessor &cb);
-  inline void ForEach(const Accessor &&cb) { ForEach(cb); }
-  void ForEachUntil(const AccessorUntil &cb);
-  inline void ForEachUntil(const AccessorUntil &&cb) { ForEachUntil(cb); }
+  void ForEach(const Accessor &cb, bool reversed = false);
+  inline void ForEach(const Accessor &&cb, bool reversed = false) { ForEach(cb, reversed); }
+  void ForEachUntil(const AccessorUntil &cb, bool reversed = false);
+  inline void ForEachUntil(const AccessorUntil &&cb, bool reversed = false) { ForEachUntil(cb, reversed); }
 
   // Executes the query, and copy entity reference results to given vector.
   // The order of collected entities is arranged from small to large by entity id.
-  void Collect(std::vector<EntityReference> &vec);
+  void Collect(std::vector<EntityReference> &vec, bool reversed = false);
   // Executes the query, and copy entity reference results to given vector until the tester function returns
   // true. Notes that the entity makes tester returns true won't be collected.
-  void CollectUntil(std::vector<EntityReference> &vec, AccessorUntil &tester);
+  void CollectUntil(std::vector<EntityReference> &vec, AccessorUntil &tester, bool reversed = false);
   // CollectUntil that allows passing in a temporary tester&&.
-  inline void CollectUntil(std::vector<EntityReference> &vec, AccessorUntil &&tester) {
-    CollectUntil(vec, tester);
+  inline void CollectUntil(std::vector<EntityReference> &vec, AccessorUntil &&tester, bool reversed = false) {
+    CollectUntil(vec, tester, reversed);
   }
 
   // Constructs a cache from this query, this will execute the query at once and
   // changes will be maintained in the cache automatically.
-  // The cacher will maintain the entities in the order respecting to this query's order.
-  [[nodiscard]] Cacher<> Cache();
+  // The cacher will maintain the entities in the order entity id from small to large.
+  [[nodiscard]] Cacher<> Cache() { return Cacher<>(*this, world, archetypes, aids, filters); }
 
   // Constructs a cache from this query, with a custom compare function.
   template <typename Compare> [[nodiscard]] inline Cacher<Compare> Cache(Compare cmp) {
@@ -1230,7 +1238,6 @@ public:
 protected:
   World &world;
   bool ready = false;
-  bool reversed = false;
   AIdsPtr aids;                                             // shared pointer to the stored match results.
   std::unordered_map<ArchetypeId, IArchetype *> archetypes; // redundancy
 
@@ -1243,12 +1250,12 @@ protected:
   Filters filters;
 
   // ~~~~~~~~ with filters ~~~~~~~~~~
-  void executeWithFilters(const AccessorUntil &cb);
-  void executeWithinFilteredSet(const AccessorUntil &cb, const std::set<EntityId> &st);
+  void executeWithFilters(const AccessorUntil &cb, bool reversed);
+  void executeWithinFilteredSet(const AccessorUntil &cb, const std::set<EntityId> &st, bool reversed);
   void executeWithinFilteredSetForward(const AccessorUntil &cb, const std::set<EntityId> &st);
   void executeWithinFilteredSetBackward(const AccessorUntil &cb, const std::set<EntityId> &st);
   // ~~~~~~~~ without filters ~~~~~~~~~~
-  void executeForAll(const AccessorUntil &cb);
+  void executeForAll(const AccessorUntil &cb, bool reversed);
   void executeForAllForward(const AccessorUntil &cb);
   void executeForAllBackward(const AccessorUntil &cb);
 };
