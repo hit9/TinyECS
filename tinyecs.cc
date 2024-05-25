@@ -577,6 +577,15 @@ void IQuery::Collect(std::vector<EntityReference> &vec) {
   });
 }
 
+void IQuery::CollectUntil(std::vector<EntityReference> &vec, AccessorUntil &tester) {
+  ForEachUntil([&vec, &tester](EntityReference &ref) {
+    // Stops early once the tester returns a true.
+    if (tester(ref)) return true;
+    vec.push_back(ref); // copy
+    return false;
+  });
+}
+
 //////////////////////////
 /// Cacher
 //////////////////////////
@@ -665,6 +674,15 @@ void ICacher::ForEach(const Accessor &cb) {
 
 void ICacher::Collect(std::vector<EntityReference> &vec) {
   ForEachUntil([&vec](EntityReference &ref) {
+    vec.push_back(ref); // copy
+    return false;
+  });
+}
+
+void ICacher::CollectUntil(std::vector<EntityReference> &vec, AccessorUntil &tester) {
+  ForEachUntil([&vec, &tester](EntityReference &ref) {
+    // stop early once tester given true.
+    if (tester(ref)) return true;
     vec.push_back(ref); // copy
     return false;
   });

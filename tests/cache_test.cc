@@ -145,4 +145,12 @@ TEST_CASE("cache/2", "[cache collect]") {
   cacher.Collect(vec);
   // cacher collect has order.
   REQUIRE(vec == decltype(vec){e2, e3, e4});
+
+  Query<D> q1(w);
+  std::vector<EntityReference> vec1;
+  cacher.CollectUntil(vec1, [&](EntityReference &e) {
+    if (e.GetId() == e4.GetId()) return true;
+    return false;
+  });
+  REQUIRE(vec1 == decltype(vec1){e2, e3});
 }

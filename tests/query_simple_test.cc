@@ -83,4 +83,12 @@ TEST_CASE("query_simple/2", "[collect]") {
   std::vector<EntityReference> vec;
   q.PreMatch().Where(index1 >= 4).Collect(vec);
   REQUIRE(vec == decltype(vec){e2, e3, e4});
+
+  Query<D> q1(w);
+  std::vector<EntityReference> vec1;
+  q.PreMatch().Where(index1 >= 4).CollectUntil(vec1, [&](EntityReference &e) {
+    if (e.GetId() == e4.GetId()) return true; // skip e4
+    return false;
+  });
+  REQUIRE(vec1 == decltype(vec){e2, e3});
 }

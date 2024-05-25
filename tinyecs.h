@@ -228,7 +228,8 @@ public:
   void Add(EntityShortId e);            // Worst O(block allocation times), best O(1)
   EntityShortId Pop();                  // O(1)
   void Reserve(size_t n);               // Reserve for n blocks.
-                                        size_t NumBlocks()const { return blocks.size();}
+  size_t NumBlocks() const { return blocks.size(); }
+
 private:
   // FIFO reuse. use deque instead of list, reason:
   // 1. list: less memory, but invokes a memory allocation on each insertion.
@@ -1077,6 +1078,13 @@ public:
 
   // Copy the cached entity references into given vector.
   void Collect(std::vector<EntityReference> &vec);
+  // Collect the cached entity references into given vector until given tester returns a true.
+  // Notes that the entity makes tester returns true won't be collected.
+  void CollectUntil(std::vector<EntityReference> &vec, AccessorUntil &tester);
+  // CollectUntil that allows passing in a temporary tester&&.
+  inline void CollectUntil(std::vector<EntityReference> &vec, AccessorUntil &&tester) {
+    CollectUntil(vec, tester);
+  }
 
 protected:
   void setup(IQuery &q);
@@ -1186,9 +1194,16 @@ public:
   void ForEachUntil(const AccessorUntil &cb);
   inline void ForEachUntil(const AccessorUntil &&cb) { ForEachUntil(cb); }
 
-  // Execute the query, and copy entity reference results to given vector.
+  // Executes the query, and copy entity reference results to given vector.
   // The order of collected entities is arranged from small to large by entity id.
   void Collect(std::vector<EntityReference> &vec);
+  // Executes the query, and copy entity reference results to given vector until the tester function returns true.
+  // Notes that the entity makes tester returns true won't be collected.
+  void CollectUntil(std::vector<EntityReference> &vec, AccessorUntil &tester);
+  // CollectUntil that allows passing in a temporary tester&&.
+  inline void CollectUntil(std::vector<EntityReference> &vec, AccessorUntil &&tester) {
+    CollectUntil(vec, tester);
+  }
 
   // Constructs a cache from this query, this will execute the query at once and
   // changes will be maintained in the cache automatically.
