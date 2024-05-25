@@ -62,12 +62,9 @@ bool Cemetery::Contains(EntityShortId e) const {
 // Adds a short entity id into the cemetery.
 // If the underlying blocks are not enough, allocates until enough.
 void Cemetery::Add(EntityShortId e) {
-  // Allocates new blocks if not enough
   const auto [i, j] = __div(e, NumRowsPerBlock);
-  while (i >= blocks.size()) {
-    blocks.push_back(std::make_unique<std::bitset<NumRowsPerBlock>>());
-    bound += NumRowsPerBlock;
-  }
+  // Allocates new blocks if not enough, at least i+1;
+  Reserve(i + 1);
   blocks[i]->set(j);
   q.push_back(e);
 }
@@ -80,6 +77,14 @@ EntityShortId Cemetery::Pop() {
   const auto [i, j] = __div(e, NumRowsPerBlock);
   blocks[i]->reset(j);
   return e;
+}
+
+// Reserve for n blocks.
+void Cemetery::Reserve(size_t n) {
+  while (n > blocks.size()) {
+    blocks.push_back(std::make_unique<std::bitset<NumRowsPerBlock>>());
+    bound += NumRowsPerBlock;
+  }
 }
 
 IArchetype::IArchetype(ArchetypeId id, IWorld *world, size_t numComponents, size_t cellSize,
@@ -246,6 +251,21 @@ void IArchetype::ForEachUntil(const AccessorUntil &cb) {
     if (!cemetery.Contains(e) && !toBorn.contains(e))
       if (cb(uncheckedGet(e))) break;
   }
+}
+
+void IArchetype::Reserve(size_t numEntities) {
+  auto [i, j] = __div(numEntities, numRows);
+  auto numBlocks = i + (j != 0);
+  while (numBlocks > blocks.size()) {
+    // Allocates new blocks.
+    blocks.push_back(std::make_unique<unsigned char[]>(blockSize));
+    std::fill_n(blocks.back().get(), blockSize, 0);
+  }
+  // Reserve for cemetery.
+  cemetery.Reserve(numBlocks);
+  // Reserve for unordered_maps.
+  toBorn.reserve(numEntities);
+  toKill.reserve(numEntities);
 }
 
 //////////////////////////

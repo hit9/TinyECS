@@ -138,3 +138,32 @@ TEST_CASE("archetype/7", "[construct a component by initializer]") {
   REQUIRE(index3.IsBind());
   REQUIRE(index2.IsBind());
 }
+
+TEST_CASE("archetype/8", "[reserve]") {
+  World w;
+  SETUP_INDEX;
+  auto &a = w.NewArchetype<A>();
+  REQUIRE(a.NumBlocks() == 0);
+  a.Reserve(2048);
+  REQUIRE(a.NumBlocks() == 2);
+  REQUIRE(a.NumEntities() == 0);
+  for (int i = 0; i < 2048; i++)
+    a.NewEntity();
+  REQUIRE(a.NumBlocks() == 2);
+  REQUIRE(a.NumEntities() == 2048);
+  a.NewEntity(); // e=2048
+  REQUIRE(a.NumBlocks() == 3);
+  REQUIRE(a.NumEntities() == 2049);
+  // Test functions should keep working.
+  REQUIRE(w.Get(__internal::pack(a.GetId(), 2048)).IsAlive());
+  REQUIRE(w.Get(__internal::pack(a.GetId(), 2047)).IsAlive());
+  REQUIRE(w.Get(__internal::pack(a.GetId(), 0)).IsAlive());
+  auto e = w.Get(__internal::pack(a.GetId(), 1023));
+  REQUIRE(e.Get<A>().y == 1);
+  e.Get<A>().x = 33;
+  REQUIRE(e.Get<A>().x == 33);
+  e.Kill();
+  REQUIRE(!e.IsAlive());
+  REQUIRE(a.NewEntity().GetId() == e.GetId()); // reuse
+  REQUIRE(a.NumBlocks() == 3);
+}

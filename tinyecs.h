@@ -227,6 +227,8 @@ public:
   bool Contains(EntityShortId e) const; // O(1)
   void Add(EntityShortId e);            // Worst O(block allocation times), best O(1)
   EntityShortId Pop();                  // O(1)
+  void Reserve(size_t n);               // Reserve for n blocks.
+                                        size_t NumBlocks()const { return blocks.size();}
 private:
   // FIFO reuse. use deque instead of list, reason:
   // 1. list: less memory, but invokes a memory allocation on each insertion.
@@ -271,6 +273,9 @@ private:
 
   // use an ordered set to store short ids of alive entities,
   // for faster ForEach(), than iterating one by one in a block.
+  // tradeoffs:
+  //  1. O(logN) per NewEntities/Kill call
+  //  2. tree-based container, dynamic memory allocation on each insertion.
   std::set<EntityShortId> alives;
   // for id and space recycle & fast liveness checkings:
   // IsAlive: !toBorn && !cemetery; both O(1)
@@ -407,6 +412,17 @@ public:
   // ForEachUntil is the ForEach that stops the iteration earlier when the given callback returns true.
   void ForEachUntil(const AccessorUntil &cb);
   inline void ForEachUntil(const AccessorUntil &&cb) { ForEachUntil(cb); }
+  // Reserve memory space for continuous-memory based containers to fit given number of entities.
+  // Because for these containers (std::vector, std::unordered_map), insertions may invoke full-container
+  // re-allocation and copying.
+  // For other internal containers (tree-based std::set, and std::deque), there's no reserve ability,
+  // and dynamic insertions won't invoke full-container copy.
+  //
+  // In detail, the following contains make effect:
+  // 1. Pre-allocated enough blocks.
+  // 2. unordered_map: toBorn, toKill.
+  // 3. Cemetery.blocks.
+  void Reserve(size_t numEntities);
 };
 
 using ArchetypeSignature = std::bitset<MaxNumArchetypesPerWorld>;
