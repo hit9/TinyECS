@@ -49,8 +49,8 @@ class IArchetype;
 
 namespace __internal { // DO NOT USE NAMES FROM __internal
 
-using EntityIdSet = std::unordered_set<EntityId>; // set of entity ids
-using AIds = std::unordered_set<ArchetypeId>;     // set of archetype ids.
+using EntityIdSet = std::unordered_set<EntityId>; // unordered set of entity ids
+using AIds = std::unordered_set<ArchetypeId>;     // unordered set of archetype ids.
 using AIdsPtr = std::shared_ptr<AIds>;            // shared pointer to a set of archetype ids.
 
 // Layout of an entity id:
@@ -323,8 +323,12 @@ private:
   // If the entity is not alive (dead or not born yet), returns NullEntityReference.
   EntityReference &get(EntityShortId e);
 
+  // Internal foreach methods in forward and backward directions.
+  void forEachUntilForward(const AccessorUntil &cb);
+  void forEachUntilBackward(const AccessorUntil &cb);
+
   friend World;   // for get, uncheckedGet, getSignature, kill, isAlive, delayedKill
-  friend IQuery;  // for get
+  friend IQuery;  // for get, forEachUntilForward, forEachUntilBackward
   friend ICacher; // for get, uncheckedGet
 
 protected:
@@ -406,13 +410,15 @@ public:
   inline EntityId DelayedNewEntity(Accessor &&initializer) { return DelayedNewEntity(initializer); }
   // Run given callback function for all alive entities in this archetype.
   // It will iterate entities in order of id from smaller to larger.
-  void ForEach(const Accessor &cb);
+  void ForEach(const Accessor &cb, const bool reversed = false);
   // ForEach is allowed to pass in a temporary function.
   // Templates and reference folding are not used here, but overloading is used.
-  inline void ForEach(const Accessor &&cb) { ForEach(cb); }
+  inline void ForEach(const Accessor &&cb, const bool reversed = false) { ForEach(cb, reversed); }
   // ForEachUntil is the ForEach that stops the iteration earlier when the given callback returns true.
-  void ForEachUntil(const AccessorUntil &cb);
-  inline void ForEachUntil(const AccessorUntil &&cb) { ForEachUntil(cb); }
+  void ForEachUntil(const AccessorUntil &cb, const bool reversed = false);
+  inline void ForEachUntil(const AccessorUntil &&cb, const bool reversed = false) {
+    ForEachUntil(cb, reversed);
+  }
   // Reserve memory space for continuous-memory based containers to fit given number of entities.
   // Because for these containers (std::vector, std::unordered_map), insertions may invoke full-container
   // re-allocation and copying.
@@ -1113,8 +1119,9 @@ private:
 // For instance, if an entity is created and it matches the cache's interested components
 // and filters, then it will be added to the internal cache automatically. And the same
 // mechanism for entity removes.
-using DefaultCacherCompare = std::less<EntityId>;
-template <typename Compare = DefaultCacherCompare> class Cacher : public ICacher {
+using CacherCompare = std::function<bool(const EntityId a, const EntityId b)>;
+
+template <typename Compare = CacherCompare> class Cacher : public ICacher {
   // Use a map instead of unordered_map, reason:
   // We should respect the continuity of entities in memory when iterating over the cache.
   // Entities in the same archetype are consecutive after sorting their ids.
@@ -1130,7 +1137,7 @@ public:
   }
   Cacher(IQuery &q, World &world, const std::unordered_map<ArchetypeId, IArchetype *> &archetypes,
          const AIdsPtr aids, const Filters &filters, Compare cmp)
-      : ICacher(world, archetypes, aids, filters), cache(Container(cmp)) {
+      : ICacher(world, archetypes, aids, filters), cache(Container(cmp)) { // cmp is via copy
     setup(q);
   }
   ~Cacher() = default;
@@ -1179,6 +1186,11 @@ public:
   // Clears filters.
   IQuery &ClearFilters();
 
+  // Tells the query we will iterate results in a reversed order.
+  // If you use an odd number of times, then the query iterates in reverse order.
+  // If it is an even number of times, it means there is no reverse.
+  IQuery &Reverse();
+
   // Execute the query, and call given callback for each matched entities **in place**.
   // The order of iteration is according to the entity ids from small to large,
   // and entities in the same archetype will be accessed next to each other.
@@ -1207,7 +1219,9 @@ public:
 
   // Constructs a cache from this query, this will execute the query at once and
   // changes will be maintained in the cache automatically.
-  [[nodiscard]] inline Cacher<> Cache() { return Cacher(*this, world, archetypes, aids, filters); }
+  // The cacher will maintain the entities in the order respecting to this query's order.
+  [[nodiscard]] Cacher<> Cache();
+
   // Constructs a cache from this query, with a custom compare function.
   template <typename Compare> [[nodiscard]] inline Cacher<Compare> Cache(Compare cmp) {
     return Cacher<Compare>(*this, world, archetypes, aids, filters, cmp);
@@ -1216,14 +1230,27 @@ public:
 protected:
   World &world;
   bool ready = false;
-  AIdsPtr aids;
+  bool reversed = false;
+  AIdsPtr aids;                                             // shared pointer to the stored match results.
   std::unordered_map<ArchetypeId, IArchetype *> archetypes; // redundancy
-  const Signature &signature;                               // ref to static storage.
+
+  // redundancy ordered archetype ids, for ordered ForEach iteration.
+  // Use a vector instead of a std::set, since it won't change any more once PreMatch is done.
+  // Iterating over a vector might be faster than a tree-based set.
+  std::vector<ArchetypeId> orderedAids;
+  const Signature &signature; // ref to static storage.
   const MatchRelation relation;
   Filters filters;
 
+  // ~~~~~~~~ with filters ~~~~~~~~~~
   void executeWithFilters(const AccessorUntil &cb);
+  void executeWithinFilteredSet(const AccessorUntil &cb, const std::set<EntityId> &st);
+  void executeWithinFilteredSetForward(const AccessorUntil &cb, const std::set<EntityId> &st);
+  void executeWithinFilteredSetBackward(const AccessorUntil &cb, const std::set<EntityId> &st);
+  // ~~~~~~~~ without filters ~~~~~~~~~~
   void executeForAll(const AccessorUntil &cb);
+  void executeForAllForward(const AccessorUntil &cb);
+  void executeForAllBackward(const AccessorUntil &cb);
 };
 
 template <MatchRelation Relation, typename... Components> class QueryImpl : public IQuery {

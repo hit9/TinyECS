@@ -2,7 +2,7 @@
 // License: BSD. https://github.com/hit9/tinyecs
 // Requirements: at least C++20.
 
-#include <algorithm> // std::fill_n
+#include <algorithm> // std::fill_n, std::sort
 #include <cstdlib>   // std::ldiv
 #include <set>       // std::set
 
@@ -235,14 +235,7 @@ EntityId IArchetype::DelayedNewEntity(Accessor &initializer) {
   return pack(id, e);
 }
 
-void IArchetype::ForEach(const Accessor &cb) {
-  ForEachUntil([&cb](EntityReference &ref) {
-    cb(ref);
-    return false;
-  });
-}
-
-void IArchetype::ForEachUntil(const AccessorUntil &cb) {
+void IArchetype::forEachUntilForward(const AccessorUntil &cb) {
   // Scan the set alives from begin to end, in order of address layout.
   // Use an ordered set of alive short entity ids instead of scan from 0 to cursor directly
   // for faster speed (less miss).
@@ -251,6 +244,31 @@ void IArchetype::ForEachUntil(const AccessorUntil &cb) {
     if (!cemetery.Contains(e) && !toBorn.contains(e))
       if (cb(uncheckedGet(e))) break;
   }
+}
+
+void IArchetype::forEachUntilBackward(const AccessorUntil &cb) {
+  for (auto it = alives.rbegin(); it != alives.rend(); ++it) {
+    auto e = *it;
+    if (!cemetery.Contains(e) && !toBorn.contains(e))
+      if (cb(uncheckedGet(e))) break;
+  }
+}
+
+void IArchetype::ForEach(const Accessor &cb, const bool reversed) {
+  ForEachUntil(
+      [&cb](EntityReference &ref) {
+        cb(ref);
+        return false;
+      },
+      reversed);
+}
+
+void IArchetype::ForEachUntil(const AccessorUntil &cb, const bool reversed) {
+  if (!reversed) {
+    forEachUntilForward(cb);
+    return;
+  }
+  forEachUntilBackward(cb);
 }
 
 void IArchetype::Reserve(size_t numEntities) {
@@ -475,9 +493,13 @@ IQuery &IQuery::PreMatch() {
   if (world.archetypes.empty())
     throw std::runtime_error("tinyecs: query PreMatch must be called after archetypes are all created");
   aids = world.matcher->MatchAndStore(relation, signature);
+  const auto &aidSet = *aids;
   // redundancy pointers of matched archetypes
-  for (const auto &aid : *aids)
+  for (const auto &aid : aidSet)
     archetypes[aid] = world.archetypes[aid].get();
+  // redundancy a vector of sorted archetype ids
+  orderedAids = std::vector<ArchetypeId>(aidSet.begin(), aidSet.end());
+  std::sort(orderedAids.begin(), orderedAids.end());
   ready = true;
   return *this;
 }
@@ -501,6 +523,18 @@ void IQuery::executeWithFilters(const AccessorUntil &cb) {
   // in memory as possible.
   // TODO: any optimization ideas here to avoid sorting?
   std::set<EntityId> st(ans.begin(), ans.end());
+  executeWithinFilteredSet(cb, st);
+}
+
+void IQuery::executeWithinFilteredSet(const AccessorUntil &cb, const std::set<EntityId> &st) {
+  if (!reversed) {
+    executeWithinFilteredSetForward(cb, st);
+    return;
+  }
+  executeWithinFilteredSetBackward(cb, st);
+}
+
+void IQuery::executeWithinFilteredSetForward(const AccessorUntil &cb, const std::set<EntityId> &st) {
   for (auto eid : st) {
     // Run callback function for each entity.
     // Note: No need to check whether an entity belongs to this query's archetypes.
@@ -515,10 +549,34 @@ void IQuery::executeWithFilters(const AccessorUntil &cb) {
   }
 }
 
+void IQuery::executeWithinFilteredSetBackward(const AccessorUntil &cb, const std::set<EntityId> &st) {
+  for (auto it = st.rbegin(); it != st.rend(); ++it) {
+    auto eid = *it;
+    auto aid = __internal::unpack_x(eid);
+    auto &ref = archetypes[aid]->get(__internal::unpack_y(eid));
+    if (cb(ref)) break;
+  }
+}
+
 // Executes given callback directly on each interested archetypes.
 void IQuery::executeForAll(const AccessorUntil &cb) {
-  for (auto [_, a] : archetypes)
-    a->ForEachUntil(cb);
+  if (!reversed) {
+    executeForAllForward(cb);
+    return;
+  }
+  executeForAllBackward(cb);
+}
+
+void IQuery::executeForAllForward(const AccessorUntil &cb) {
+  for (auto aid : orderedAids)
+    archetypes[aid]->forEachUntilForward(cb);
+}
+
+void IQuery::executeForAllBackward(const AccessorUntil &cb) {
+  for (auto it = orderedAids.rbegin(); it != orderedAids.rend(); ++it) {
+    auto aid = *it;
+    archetypes[aid]->forEachUntilForward(cb);
+  }
 }
 
 // ~~~~~~~~~~ IQuery API ~~~~~~~~~~~~~~~~~~~
@@ -554,6 +612,11 @@ IQuery &IQuery::ClearFilters() {
   return *this;
 }
 
+IQuery &IQuery::Reverse() {
+  reversed ^= 1;
+  return *this;
+}
+
 // Iterates each matched entities.
 void IQuery::ForEach(const Accessor &cb) {
   ForEachUntil([&cb](EntityReference &ref) {
@@ -586,6 +649,20 @@ void IQuery::CollectUntil(std::vector<EntityReference> &vec, AccessorUntil &test
   });
 }
 
+Cacher<> IQuery::Cache() {
+  // std::greater and std::less aren't the same type.
+  // We have to wrap a lambda around them, or just make our own one.
+  // And don't mix in the `reversed` into the lambda function.
+  // We should make the compare as simple as possible for the cacher,
+  // no need for runtime checking `reversed` variable anymore for a cacher.
+  CacherCompare cmp;
+  if (!reversed) // less than
+    cmp = [](const EntityId a, const EntityId b) { return a < b; };
+  else // greater than
+    cmp = [](const EntityId a, const EntityId b) { return a > b; };
+  return Cacher<decltype(cmp)>(*this, world, archetypes, aids, filters, cmp);
+}
+
 //////////////////////////
 /// Cacher
 //////////////////////////
@@ -595,6 +672,7 @@ void IQuery::CollectUntil(std::vector<EntityReference> &vec, AccessorUntil &test
 void ICacher::setup(__internal::IQuery &q) {
   if (aids->empty()) return; // early quit.
   // Cache entities right now (copy)
+  // In the order of the query's order (backward or forward).
   q.ForEach([this](const EntityReference &ref) { this->insert(ref.GetId(), ref); });
   // Setup callbacks.
   setupCallbacksWatchingEntities();
