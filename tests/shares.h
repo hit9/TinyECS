@@ -31,10 +31,13 @@ struct E {
   float y = 3.14;
   FieldProxy<int, decltype(index3)> x = 0;
   FieldProxy<std::string, decltype(index2)> z = std::string("abc");
-  E() {
+  void BindIndexes() {
+
     x.BindIndex(index3);
     z.BindIndex(index2);
   }
+  E() { BindIndexes(); }
+  E(int x, const std::string &z = "abc") :  x(x), z(z) { BindIndexes(); }
 };
 
 extern UnorderedFieldIndex<Status> index5;

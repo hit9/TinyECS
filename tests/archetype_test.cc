@@ -127,3 +127,14 @@ TEST_CASE("archetype/6", "[test get unknown column]") {
   auto e = a.NewEntity();
   REQUIRE_THROWS_AS(e.Get<B>(), std::runtime_error);
 }
+
+TEST_CASE("archetype/7", "[construct a component by initializer]") {
+  World w;
+  SETUP_INDEX;
+  auto &a = w.NewArchetype<A, E>();
+  auto e = a.NewEntity([](EntityReference &e) { e.Construct<E>(314, "xyz"); });
+  REQUIRE(e.Get<E>().x == 314);
+  REQUIRE(e.Get<E>().z == "xyz");
+  REQUIRE(index3.IsBind());
+  REQUIRE(index2.IsBind());
+}

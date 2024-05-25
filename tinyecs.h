@@ -176,7 +176,8 @@ public:
   // The component class must have a corresponding constructor.
   // And the field index binding must be done in that constructor.
   template <typename Component, typename... Args> void Construct(Args... args) {
-    (a->getComponentPtr<Component>(data))->Component(std::forward<Args>(args)...);
+    auto ptr = a->getComponentPtr<Component>(data);
+    new (ptr) Component(std::forward<Args>(args)...);
   }
 };
 
