@@ -16,11 +16,20 @@ TEST_CASE("delayed/new") {
   REQUIRE(a2.NumEntities() == 0);
   REQUIRE(a3.NumEntities() == 0);
 
-  auto eid1 = a1.DelayedNewEntity();
-  auto eid2 = a2.DelayedNewEntity([](EntityReference &e) { e.Construct<E>(378, "xyza"); });
-  auto eid3 = a3.DelayedNewEntity([](EntityReference &e) {
+  std::vector<EntityId> constructionOrders;
+
+  auto eid1 = a1.DelayedNewEntity([&constructionOrders](EntityReference &e) {
+    e.Construct<A>();
+    constructionOrders.push_back(e.GetId());
+  });
+  auto eid2 = a2.DelayedNewEntity([&constructionOrders](EntityReference &e) {
+    e.Construct<E>(378, "xyza");
+    constructionOrders.push_back(e.GetId());
+  });
+  auto eid3 = a3.DelayedNewEntity([&constructionOrders](EntityReference &e) {
     e.Construct<E>(667, "xyz");
     e.Construct<A>();
+    constructionOrders.push_back(e.GetId());
   });
 
   // still no entities alive before apply
@@ -66,4 +75,76 @@ TEST_CASE("delayed/new") {
   REQUIRE(w.Get(eid3).Get<A>().y == 1);
   REQUIRE(w.Get(eid3).Get<E>().x == 667);
   REQUIRE(w.Get(eid3).Get<E>().z == "xyz");
+
+  // And the construction order should respect to the DelayedXXX calls.
+  REQUIRE(constructionOrders == std::vector<EntityId>{eid1, eid2, eid3});
+
+  // Queries should work now
+  vec1.clear(), vec2.clear();
+  q1.Collect(vec1), q2.Collect(vec2);
+  REQUIRE(vec1 == std::vector<EntityReference>{w.Get(eid1), w.Get(eid3)});
+  REQUIRE(vec2 == std::vector<EntityReference>{w.Get(eid2), w.Get(eid3)});
+}
+
+TEST_CASE("delayed/kill") {
+  World w;
+  SETUP_INDEX;
+  auto &a1 = w.NewArchetype<A>();
+  auto &a2 = w.NewArchetype<E>();
+  auto &a3 = w.NewArchetype<E, A>();
+  auto e1 = a1.NewEntity();
+  auto e2 = a2.NewEntity();
+  auto e3 = a3.NewEntity();
+
+  // Now each archetype contains an entity.
+  REQUIRE(a1.NumEntities() == 1);
+  REQUIRE(a2.NumEntities() == 1);
+  REQUIRE(a3.NumEntities() == 1);
+
+  // Now delay kill them.
+  std::vector<EntityId> killOrders;
+
+  Accessor cb = [&killOrders](EntityReference &ref) { killOrders.push_back(ref.GetId()); };
+  e1.DelayedKill(cb);
+  e2.DelayedKill(cb);
+  e3.DelayedKill(cb);
+  auto eid1 = e1.GetId();
+  auto eid2 = e2.GetId();
+  auto eid3 = e3.GetId();
+
+  // Should not deleted yet.
+  REQUIRE(e1.IsAlive());
+  REQUIRE(e2.IsAlive());
+  REQUIRE(e3.IsAlive());
+  REQUIRE(w.Get(e1.GetId()).IsAlive());
+  REQUIRE(w.Get(e2.GetId()).IsAlive());
+  REQUIRE(w.Get(e3.GetId()).IsAlive());
+
+  // Let's kill them
+  w.ApplyDelayedKills();
+  REQUIRE(a1.NumEntities() == 0);
+  REQUIRE(a2.NumEntities() == 0);
+  REQUIRE(a3.NumEntities() == 0);
+
+  // Should all dead.
+  REQUIRE(!e1.IsAlive());
+  REQUIRE(!e2.IsAlive());
+  REQUIRE(!e3.IsAlive());
+  REQUIRE(!w.Get(e1.GetId()).IsAlive());
+  REQUIRE(!w.Get(e2.GetId()).IsAlive());
+  REQUIRE(!w.Get(e3.GetId()).IsAlive());
+
+  // Kill order?
+  REQUIRE(killOrders == std::vector<EntityId>{eid1, eid2, eid3});
+
+  // Queries
+  Query<A> q1(w);
+  std::vector<EntityReference> vec1;
+  q1.PreMatch().Collect(vec1);
+  REQUIRE(vec1.empty());
+
+  Query<E> q2(w);
+  std::vector<EntityReference> vec2;
+  q2.PreMatch().Collect(vec2);
+  REQUIRE(vec2.empty());
 }

@@ -166,11 +166,13 @@ void IArchetype::applyDelayedNewEntity(EntityShortId e) {
   toBorn.erase(it);
 }
 
-void IArchetype::kill(EntityShortId e) {
+void IArchetype::kill(EntityShortId e, Accessor *beforeKillPtr) {
   // Does nothing if given short id is invalid or already dead.
   if (e >= ecursor || cemetery.Contains(e)) return;
   // If a kill is called on a to-born/to-kill entity, then it's going to die directly.
   auto data = getEntityData(e);
+  // Call provided callback before all work.
+  if (beforeKillPtr != nullptr) (*beforeKillPtr)(*toref(data));
   // Before removing hook.
   world->beforeEntityRemoved(id, e);
   // Call destructor of each component.
@@ -182,9 +184,10 @@ void IArchetype::kill(EntityShortId e) {
   alives.erase(e);
 }
 
-void IArchetype::delayedKill(EntityShortId e) {
+void IArchetype::delayedKill(EntityShortId e, Accessor *beforeKillPtr) {
   if (isAlive(e)) {
-    toKill.insert(e);
+    auto callback = *beforeKillPtr; // copy
+    toKill.insert({e, callback});
     world->addDelayedKillEntity(id, e);
   }
 }
@@ -192,7 +195,8 @@ void IArchetype::delayedKill(EntityShortId e) {
 void IArchetype::applyDelayedKill(EntityShortId e) {
   auto it = toKill.find(e);
   if (it == toKill.end()) return;
-  kill(e);
+  auto cb = it->second;
+  kill(e, &cb);
   toKill.erase(it);
 }
 
@@ -214,8 +218,7 @@ EntityId IArchetype::DelayedNewEntity() {
   return DelayedNewEntity([this](EntityReference &ref) { constructComponents(todata(&ref)); });
 }
 
-EntityId
- IArchetype::DelayedNewEntity(Accessor &initializer) {
+EntityId IArchetype::DelayedNewEntity(Accessor &initializer) {
   // A to-born entity is considered non-alive.
   // But we have to pre-allocate a seat for it, then its id and reference are available.
   // And the data can be set here in-place when applied.
@@ -316,13 +319,19 @@ bool World::IsAlive(EntityId eid) const {
 void World::Kill(EntityId eid) {
   auto aid = __internal::unpack_x(eid);
   if (aid >= archetypes.size()) return;
-  archetypes[aid]->kill(__internal::unpack_y(eid));
+  archetypes[aid]->kill(__internal::unpack_y(eid), nullptr);
 }
 
 void World::DelayedKill(EntityId eid) {
   auto aid = __internal::unpack_x(eid);
   if (aid >= archetypes.size()) return;
-  archetypes[aid]->delayedKill(__internal::unpack_y(eid));
+  archetypes[aid]->delayedKill(__internal::unpack_y(eid), nullptr);
+}
+
+void World::DelayedKill(EntityId eid, Accessor &beforeKilled) {
+  auto aid = __internal::unpack_x(eid);
+  if (aid >= archetypes.size()) return;
+  archetypes[aid]->delayedKill(__internal::unpack_y(eid), &beforeKilled);
 }
 
 EntityReference &World::Get(EntityId eid) const {

@@ -109,6 +109,11 @@ public:
 /// EntityReference
 //////////////////////////
 
+// Accessor is a function to access an entity via its entity reference.
+using Accessor = std::function<void(EntityReference &)>;
+// AccessorUntil is the Accessor that stops the iteration earlier once the callback returns true.
+using AccessorUntil = std::function<bool(EntityReference &)>;
+
 namespace __internal {
 
 class IArchetypeEntityApi { // Archetype api for EntityReference.
@@ -118,8 +123,8 @@ public:
 protected:
   // ~~~~~~ for IArchetype to override ~~~~~~
   virtual bool isAlive(EntityShortId e) const = 0;
-  virtual void kill(EntityShortId e) = 0;
-  virtual void delayedKill(EntityShortId e) = 0;
+  virtual void kill(EntityShortId e, Accessor *cb = nullptr) = 0;
+  virtual void delayedKill(EntityShortId e, Accessor *beforeKilledPtr) = 0;
   virtual unsigned char *getComponentRawPtr(unsigned char *data, ComponentId cid) const = 0;
   virtual unsigned char *uncheckedGetComponentRawPtr(unsigned char *data, ComponentId cid) const = 0;
   // ~~~~ templated api method ~~~~~
@@ -164,10 +169,15 @@ public:
     return *a->uncheckedGetComponentPtr<Component>(data);
   }
   // Kill this entity right now.
-  inline void Kill() { a->kill(__internal::unpack_y(id)); }
+  inline void Kill() { a->kill(__internal::unpack_y(id), nullptr); }
   // Mark this entity to be killed later.
   // Finally we should call world.ApplyDelayedKills() to make it take effect.
-  inline void DelayedKill() { a->delayedKill(__internal::unpack_y(id)); }
+  inline void DelayedKill() { a->delayedKill(__internal::unpack_y(id), nullptr); }
+  // DelayedKill with a hook function to be called before this entity is applied killed.
+  // No matter whether the `beforeKilled` function is provided, the destructor of each component of this
+  // entity is going to be called on this entity's death.
+  inline void DelayedKill(Accessor &beforeKilled) { a->delayedKill(__internal::unpack_y(id), &beforeKilled); }
+  inline void DelayedKill(Accessor &&beforeKilled) { DelayedKill(beforeKilled); }
   // Returns true if this entity is alive.
   // For delay created entity, it's not alive until a world.ApplyDelayedNewEntities() is called.
   // For delay killed entity, it's still alive until a world.ApplyDelayedKills() is called.
@@ -180,11 +190,6 @@ public:
     new (ptr) Component(std::forward<Args>(args)...);
   }
 };
-
-// Accessor is a function to access an entity via its entity reference.
-using Accessor = std::function<void(EntityReference &)>;
-// AccessorUntil is the Accessor that stops the iteration earlier once the callback returns true.
-using AccessorUntil = std::function<bool(EntityReference &)>;
 
 //////////////////////////
 /// IArchetype
@@ -274,11 +279,10 @@ private:
   //   Mark: stores data directly in blocks and add to map toBorn (not alives).
   //   Apply: move from map toBorn to set alives, wthout copying entity data.
   // [ DelayedKill ]
-  //   Mark: add to set toKill.
+  //   Mark: add to map toKill.
   //   Apply: move from set alives to cemetery, and remove from toKill.
-  std::unordered_set<EntityShortId> toKill;
-  // use an unordered_map instead of an unordered_set for toBorn, stores the initializer.
-  std::unordered_map<EntityShortId, Accessor> toBorn;
+  // use an unordered_map instead of an unordered_set for toBorn, stores the callbacks.
+  std::unordered_map<EntityShortId, Accessor> toBorn, toKill;
 
   // Use a fixed-size array for faster performance than an unordered_map.
   // Because it's very often to get a component of an entity reference.
@@ -332,12 +336,13 @@ protected:
 
   //~~~~~~~~ Kill Entity ~~~~~~~~~~~~~~
   // kill an entity by short id at once. O(logN).
-  void kill(EntityShortId e) override;
+  void kill(EntityShortId e, Accessor *cb) override;
   // Mark an entity to be killed. O(1)
   // If the given entity is already dead, does nothing.
-  void delayedKill(EntityShortId e) override;
+  // Parameter beforeKillPtr is a pointer to a function, which is to be execute before the killing is applied.
+  void delayedKill(EntityShortId e, Accessor *beforeKillPtr) override;
   // Kill a delayed to kill entity by short entity id.
-  // Does nothing if given entity is not in the toKill set.
+  // Does nothing if given entity is not in the toKill map.
   void applyDelayedKill(EntityShortId e);
 
   //~~~~~~~~ New Entity ~~~~~~~~~~~~~~
@@ -499,6 +504,12 @@ public:
   // Mark an entity to be killed later.
   // Finally we should call world.ApplyDelayedKills() to make it take effect.
   void DelayedKill(EntityId eid);
+  // DelayedKill with an additional callback to be executed before the entity is killed.
+  // No matter whether a `beforeKilled` function is provided, the destructor of each component of the entity
+  // will be called on the entity's death.
+  void DelayedKill(EntityId eid, Accessor &beforeKilled);
+  // forward right reference for temporary beforeKilled parameter.
+  inline void DelayedKill(EntityId eid, Accessor &&beforeKilled) { DelayedKill(eid, beforeKilled); }
   // Returns the reference to an entity by entity id.
   // Returns the NullEntityReference if given entity does not exist, of which method IsAlive() == false,
   [[nodiscard]] EntityReference &Get(EntityId eid) const;
