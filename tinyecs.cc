@@ -156,13 +156,14 @@ void IArchetype::doNewEntity(EntityShortId e, EntityReference &ref, Accessor &in
   world->afterEntityCreated(id, e);
 }
 
-void IArchetype::applyDelayedNewEntity() {
-  for (auto &[e, initializer] : toBorn) {
-    auto data = getEntityData(e);
-    auto &ref = *toref(data);
-    doNewEntity(e, ref, initializer);
-  }
-  toBorn.clear();
+void IArchetype::applyDelayedNewEntity(EntityShortId e) {
+  auto it = toBorn.find(e);
+  if (it == toBorn.end()) return;
+  auto &initializer = it->second;
+  auto data = getEntityData(e);
+  auto &ref = *toref(data);
+  doNewEntity(e, ref, initializer);
+  toBorn.erase(it);
 }
 
 void IArchetype::kill(EntityShortId e) {
@@ -184,15 +185,15 @@ void IArchetype::kill(EntityShortId e) {
 void IArchetype::delayedKill(EntityShortId e) {
   if (isAlive(e)) {
     toKill.insert(e);
-    world->setArchetypeHasDelayedKill(id);
+    world->addDelayedKillEntity(id, e);
   }
 }
 
-void IArchetype::applyDelayedKill() {
-  // Kill entities to be killed.
-  for (auto e : toKill)
-    kill(e);
-  toKill.clear();
+void IArchetype::applyDelayedKill(EntityShortId e) {
+  auto it = toKill.find(e);
+  if (it == toKill.end()) return;
+  kill(e);
+  toKill.erase(it);
 }
 
 EntityReference &IArchetype::NewEntity() {
@@ -221,7 +222,7 @@ EntityReference &IArchetype::DelayedNewEntity(Accessor &initializer) {
   auto [e, data] = allocateForNewEntity();
   // here copy initializer function to store
   toBorn.insert({e, initializer});
-  world->setArchetypeHasDelayedNew(id);
+  world->addDelayedNewEntity(id, e);
   return *toref(data);
 }
 
@@ -346,17 +347,19 @@ void World::RemoveCallback(uint32_t id) {
 }
 
 void World::ApplyDelayedKill() {
-  for (auto aid : archetypeIdHasDelayedKill) {
-    archetypes[aid]->applyDelayedKill();
+  while (!toKill.empty()) {
+    auto eid = toKill.front();
+    toKill.pop_front();
+    archetypes[__internal::unpack_x(eid)]->applyDelayedKill(__internal::unpack_y(eid));
   }
-  archetypeIdHasDelayedKill.clear();
 }
 
 void World::ApplyDelayedNewEntity() {
-  for (auto aid : archetypeIdHasDelayedNew) {
-    archetypes[aid]->applyDelayedNewEntity();
+  while (!toBorn.empty()) {
+    auto eid = toBorn.front();
+    toBorn.pop_front();
+    archetypes[__internal::unpack_x(eid)]->applyDelayedNewEntity(__internal::unpack_y(eid));
   }
-  archetypeIdHasDelayedNew.clear();
 }
 
 // Push a callback function into management to subscribe create and kill enntities events

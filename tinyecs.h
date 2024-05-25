@@ -201,9 +201,9 @@ protected:
   // trigger callbacks on creating and removing entities.
   virtual void afterEntityCreated(ArchetypeId a, EntityShortId e) = 0;
   virtual void beforeEntityRemoved(ArchetypeId a, EntityShortId e) = 0;
-  // for archetype to self-mark which contains delayed stuffs.
-  virtual void setArchetypeHasDelayedNew(ArchetypeId a) = 0;
-  virtual void setArchetypeHasDelayedKill(ArchetypeId a) = 0;
+  // for archetype to mark delayed creating and killing entities to the world.
+  virtual void addDelayedKillEntity(ArchetypeId a, EntityShortId e) = 0;
+  virtual void addDelayedNewEntity(ArchetypeId a, EntityShortId e) = 0;
 
   friend class IArchetype;
   friend class IFieldIndex; // for lastCreatedEntityId
@@ -335,8 +335,9 @@ protected:
   // Mark an entity to be killed. O(1)
   // If the given entity is already dead, does nothing.
   void delayedKill(EntityShortId e) override;
-  // Apply all delayed entity killings.
-  void applyDelayedKill();
+  // Kill a delayed to kill entity by short entity id.
+  // Does nothing if given entity is not in the toKill set.
+  void applyDelayedKill(EntityShortId e);
 
   //~~~~~~~~ New Entity ~~~~~~~~~~~~~~
   // Allocates a seat for a new entity, including a short id and block row's memory address. Time: O(1)
@@ -346,8 +347,9 @@ protected:
   std::pair<EntityShortId, unsigned char *> allocateForNewEntity();
   // Makes an entity to be alive in the world.
   void doNewEntity(EntityShortId e, EntityReference &ref, Accessor &initializer);
-  // Apply all delayed entity creations.
-  void applyDelayedNewEntity();
+  // Makes an entity to be born alive.
+  // Does nothing if given entity is not in the toBorn map.
+  void applyDelayedNewEntity(EntityShortId e);
 
   // ~~~~~~~ for Archetype Impl ~~~~~~~~~~
   // Call default destructors of all components of an entity by providing entity data address.
@@ -525,15 +527,19 @@ protected:
   // Impls IWorld
   void afterEntityCreated(ArchetypeId a, EntityShortId e) override { triggerCallbacks(a, e, 0); }
   void beforeEntityRemoved(ArchetypeId a, EntityShortId e) override { triggerCallbacks(a, e, 1); }
-  void setArchetypeHasDelayedNew(ArchetypeId a) override { archetypeIdHasDelayedNew.insert(a); }
-  void setArchetypeHasDelayedKill(ArchetypeId a) override { archetypeIdHasDelayedKill.insert(a); }
+  void addDelayedNewEntity(ArchetypeId a, EntityShortId e) override {
+    toBorn.push_back(__internal::pack(a, e));
+  }
+  void addDelayedKillEntity(ArchetypeId a, EntityShortId e) override {
+    toKill.push_back(__internal::pack(a, e));
+  }
 
 private:
   std::vector<std::unique_ptr<__internal::IArchetype>> archetypes;
   std::unique_ptr<__internal::Matcher> matcher;
 
-  // stores the archetypes which contains entities to be born and kill.
-  std::unordered_set<ArchetypeId> archetypeIdHasDelayedNew, archetypeIdHasDelayedKill;
+  // We should respect to the order of DelayedXXX calls, in case of possible entity dependency relations.
+  std::deque<EntityId> toBorn, toKill;
 
   /// ~~~~~~~~~~ Callback ~~~~~~~~~~~~~~~~~
   struct Callback {
