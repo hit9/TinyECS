@@ -209,21 +209,22 @@ EntityReference &IArchetype::NewEntity(Accessor &initializer) {
   return ref;
 }
 
-EntityReference &IArchetype::DelayedNewEntity() {
+EntityId IArchetype::DelayedNewEntity() {
   // Call the default constructor for each component if the initializer is not provided.
   return DelayedNewEntity([this](EntityReference &ref) { constructComponents(todata(&ref)); });
 }
 
-EntityReference &IArchetype::DelayedNewEntity(Accessor &initializer) {
+EntityId
+ IArchetype::DelayedNewEntity(Accessor &initializer) {
   // A to-born entity is considered non-alive.
   // But we have to pre-allocate a seat for it, then its id and reference are available.
-  // And the data can be set here in-place. In this design, we avoid data copy to support
-  // the "delayed new entity" feature.
+  // And the data can be set here in-place when applied.
+  // In this design, we avoid data copy to support the "delayed new entity" feature.
   auto [e, data] = allocateForNewEntity();
   // here copy initializer function to store
   toBorn.insert({e, initializer});
   world->addDelayedNewEntity(id, e);
-  return *toref(data);
+  return pack(id, e);
 }
 
 void IArchetype::ForEach(const Accessor &cb) {
@@ -346,7 +347,7 @@ void World::RemoveCallback(uint32_t id) {
   callbacks.erase(it);
 }
 
-void World::ApplyDelayedKill() {
+void World::ApplyDelayedKills() {
   while (!toKill.empty()) {
     auto eid = toKill.front();
     toKill.pop_front();
@@ -354,7 +355,7 @@ void World::ApplyDelayedKill() {
   }
 }
 
-void World::ApplyDelayedNewEntity() {
+void World::ApplyDelayedNewEntities() {
   while (!toBorn.empty()) {
     auto eid = toBorn.front();
     toBorn.pop_front();

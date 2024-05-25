@@ -166,11 +166,11 @@ public:
   // Kill this entity right now.
   inline void Kill() { a->kill(__internal::unpack_y(id)); }
   // Mark this entity to be killed later.
-  // Finally we should call world.ApplyDelayedKill() to make it take effect.
+  // Finally we should call world.ApplyDelayedKills() to make it take effect.
   inline void DelayedKill() { a->delayedKill(__internal::unpack_y(id)); }
   // Returns true if this entity is alive.
-  // For delay created entity, it's not alive until a world.ApplyDelayedNewEntity() is called.
-  // For delay killed entity, it's still alive until a world.ApplyDelayedKill() is called.
+  // For delay created entity, it's not alive until a world.ApplyDelayedNewEntities() is called.
+  // For delay killed entity, it's still alive until a world.ApplyDelayedKills() is called.
   inline bool IsAlive(void) const { return a != nullptr && a->isAlive(__internal::unpack_y(id)); }
   // Constructs a component of this entity.
   // The component class must have a corresponding constructor.
@@ -382,18 +382,17 @@ public:
   EntityReference &NewEntity(Accessor &initializer);
   inline EntityReference &NewEntity(Accessor &&initializer) { return NewEntity(initializer); }
   // Creates a new entity later, returns a reference to the entity.
-  // Finally we should call world.ApplyDelayedNewEntity() to make it take effect.
+  // Finally we should call world.ApplyDelayedNewEntities() to make it take effect.
+  // Returns the pre-allocated entity id.
   // Parameter initializer is a function to initialize all component data for the new entity.
+  // Although it's still considered not-alive, but we allocate an entity id and un-initialized space in
+  // advance. It's meaningless to get the reference of a to-born entity and set data to it before it's applied
+  // to be alive.
   // If the initializer is not provided, the default constructor will be called without any arguments.
-  // Although this entity is currently still considered non-alive, but we can still set its
-  // component data via this reference. And this is the only chance the get its reference,
-  // since for a to-born entity, it's considered non-alive,  we cannot call Get/ForEach queries to get a
-  // reference to it.
-  // When the ApplyDelayedNewEntity is called, there's no entity data copy, the entity is just marked
-  // alive.
-  EntityReference &DelayedNewEntity();
-  EntityReference &DelayedNewEntity(Accessor &initializer);
-  inline EntityReference &DelayedNewEntity(Accessor &&initializer) { return DelayedNewEntity(initializer); }
+  // When the ApplyDelayedNewEntities is called, the entity is just marked alive without any data copy.
+  EntityId DelayedNewEntity();
+  EntityId DelayedNewEntity(Accessor &initializer);
+  inline EntityId DelayedNewEntity(Accessor &&initializer) { return DelayedNewEntity(initializer); }
   // Run given callback function for all alive entities in this archetype.
   // It will iterate entities in order of id from smaller to larger.
   void ForEach(const Accessor &cb);
@@ -498,7 +497,7 @@ public:
   // Kill an entity by id.
   void Kill(EntityId eid);
   // Mark an entity to be killed later.
-  // Finally we should call world.ApplyDelayedKill() to make it take effect.
+  // Finally we should call world.ApplyDelayedKills() to make it take effect.
   void DelayedKill(EntityId eid);
   // Returns the reference to an entity by entity id.
   // Returns the NullEntityReference if given entity does not exist, of which method IsAlive() == false,
@@ -520,9 +519,9 @@ public:
   void RemoveCallback(uint32_t id);
   inline size_t NumCallbacks() const { return callbacks.size(); }
   // Apply delayed entity killings for all archetypes.
-  void ApplyDelayedKill();
+  void ApplyDelayedKills();
   // Apply delayed entity creations for all archetypes.
-  void ApplyDelayedNewEntity();
+  void ApplyDelayedNewEntities();
 
 protected:
   // Impls IWorld
