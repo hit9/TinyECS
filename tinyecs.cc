@@ -575,7 +575,7 @@ void IQuery::executeForAllForward(const AccessorUntil &cb) {
 void IQuery::executeForAllBackward(const AccessorUntil &cb) {
   for (auto it = orderedAids.rbegin(); it != orderedAids.rend(); ++it) {
     auto aid = *it;
-    archetypes[aid]->forEachUntilForward(cb);
+    archetypes[aid]->forEachUntilBackward(cb);
   }
 }
 
