@@ -1,6 +1,6 @@
 
 #include <catch2/catch_test_macros.hpp>
-#include <unordered_set>
+#include <vector>
 
 #include "shares.h"
 #include "tinyecs.h"
@@ -24,11 +24,11 @@ TEST_CASE("query_filters_enum") {
   // query status == s1
   Query<F> q1(w, {index5 == Status::S1});
   q1.PreMatch();
-  std::unordered_set<EntityId> m1;
+  std::vector<EntityId> m1;
   q1.ForEach([&](EntityReference &e) {
     REQUIRE(e.IsAlive());
     REQUIRE(e.Get<F>().status == Status::S1);
-    m1.insert(e.GetId());
+    m1.push_back(e.GetId());
   });
   REQUIRE(m1 == decltype(m1){e2.GetId(), e3.GetId()});
 
@@ -44,12 +44,12 @@ TEST_CASE("query_filters_enum") {
 
   Query<F> q2(w, {index5 == Status::S2, index1 > 100});
   q2.PreMatch();
-  std::unordered_set<EntityId> m2;
+  std::vector<EntityId> m2;
   q2.ForEach([&](EntityReference &e) {
     REQUIRE(e.IsAlive());
     REQUIRE(e.Get<F>().status == Status::S2);
     REQUIRE(e.Get<D>().x > 100);
-    m2.insert(e.GetId());
+    m2.push_back(e.GetId());
   });
   REQUIRE(m2 == decltype(m2){e3.GetId(), e5.GetId()});
 }

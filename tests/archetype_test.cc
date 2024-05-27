@@ -109,6 +109,20 @@ TEST_CASE("archetype/3", "[constructors and desctructors]") {
   REQUIRE(kDescructorCalled); // desctructor called
 }
 
+TEST_CASE("archetype/3", "[desctructor should be called on custom initializer]") {
+  World w;
+  auto &a = w.NewArchetype<A, K>();
+  auto e = a.NewEntity([&](EntityReference& e) {
+          e.Construct<A>();
+          e.Construct<K>();
+          });
+  REQUIRE(e.Get<K>().a == 1); // constructor called
+  REQUIRE(e.Get<K>().b == 3); // constructor called
+  kDescructorCalled = false;
+  e.Kill();
+  REQUIRE(kDescructorCalled); // desctructor called
+}
+
 TEST_CASE("archetype/4", "[constructors and desctructors index bind]") {
   World w;
   SETUP_INDEX;

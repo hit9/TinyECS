@@ -1,5 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
-#include <unordered_set>
+#include <vector>
 
 #include "shares.h"
 #include "tinyecs.h"
@@ -22,39 +22,39 @@ TEST_CASE("query_simple/1", "[simple]") {
 
   Query<A> q1(w);
   q1.PreMatch();
-  std::unordered_set<EntityId> m1;
-  q1.ForEach([&](EntityReference &e) { m1.insert(e.GetId()); });
+  std::vector<EntityId> m1;
+  q1.ForEach([&](EntityReference &e) { m1.push_back(e.GetId()); });
   REQUIRE(m1 == decltype(m1){e1.GetId(), e2.GetId(), e3.GetId()});
 
   Query<B> q2(w);
   q2.PreMatch();
-  std::unordered_set<EntityId> m2;
-  q2.ForEach([&](EntityReference &e) { m2.insert(e.GetId()); });
+  std::vector<EntityId> m2;
+  q2.ForEach([&](EntityReference &e) { m2.push_back(e.GetId()); });
   REQUIRE(m2 == decltype(m2){e1.GetId(), e2.GetId(), e4.GetId()});
 
   QueryAny<C> q3(w);
   q3.PreMatch();
-  std::unordered_set<EntityId> m3;
-  q3.ForEach([&](EntityReference &e) { m3.insert(e.GetId()); });
+  std::vector<EntityId> m3;
+  q3.ForEach([&](EntityReference &e) { m3.push_back(e.GetId()); });
   REQUIRE(m3 == decltype(m3){e3.GetId(), e4.GetId()});
 
   QueryNone<A, C> q4(w);
   q4.PreMatch();
-  std::unordered_set<EntityId> m4;
-  q4.ForEach([&](EntityReference &e) { m4.insert(e.GetId()); });
+  std::vector<EntityId> m4;
+  q4.ForEach([&](EntityReference &e) { m4.push_back(e.GetId()); });
   REQUIRE(m4.empty());
 
   QueryAny<> q5(w);
   q5.PreMatch();
-  std::unordered_set<EntityId> m5;
-  q5.ForEach([&](EntityReference &e) { m5.insert(e.GetId()); });
+  std::vector<EntityId> m5;
+  q5.ForEach([&](EntityReference &e) { m5.push_back(e.GetId()); });
   REQUIRE(m5 == decltype(m5){e1.GetId(), e2.GetId(), e3.GetId(), e4.GetId()});
 
   w.Kill(e1.GetId());
   Query<A> q6(w);
   q6.PreMatch();
-  std::unordered_set<EntityId> m6;
-  q6.ForEach([&](EntityReference &e) { m6.insert(e.GetId()); });
+  std::vector<EntityId> m6;
+  q6.ForEach([&](EntityReference &e) { m6.push_back(e.GetId()); });
   REQUIRE(m6 == decltype(m1){e2.GetId(), e3.GetId()});
 }
 

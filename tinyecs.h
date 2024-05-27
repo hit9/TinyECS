@@ -425,8 +425,8 @@ public:
   // For other internal containers (tree-based std::set, and std::deque), there's no reserve ability,
   // and dynamic insertions won't invoke full-container copy.
   //
-  // In detail, the following contains make effect:
-  // 1. Pre-allocated enough blocks.
+  // In detail, the following fields make effect:
+  // 1. blocks: Pre-allocated enough blocks.
   // 2. unordered_map: toBorn, toKill.
   // 3. Cemetery.blocks.
   void Reserve(size_t numEntities);

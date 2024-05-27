@@ -1,5 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
-#include <unordered_set>
+#include <vector>
 
 #include "shares.h"
 #include "tinyecs.h"
@@ -32,13 +32,13 @@ TEST_CASE("query_filters_where/1", "[simple]") {
   q.PreMatch();
   q.Where(Filters{index2 == "xyz"}).Where(index1 < 2);
 
-  std::unordered_set<EntityId> z1;
-  q.ForEach([&z1](EntityReference &e) { z1.insert(e.GetId()); });
+  std::vector<EntityId> z1;
+  q.ForEach([&z1](EntityReference &e) { z1.push_back(e.GetId()); });
   REQUIRE(z1 == decltype(z1){e2.GetId()});
 
   q.ClearFilters();
   q.Where(Filters{index2 == "xyz"}).Where(index1 < 2);
   z1.clear();
-  q.ForEach([&z1](EntityReference &e) { z1.insert(e.GetId()); });
+  q.ForEach([&z1](EntityReference &e) { z1.push_back(e.GetId()); });
   REQUIRE(z1 == decltype(z1){e1.GetId(), e2.GetId()});
 }

@@ -1,6 +1,6 @@
 
 #include <catch2/catch_test_macros.hpp>
-#include <unordered_set>
+#include <vector>
 
 #include "shares.h"
 #include "tinyecs.h"
@@ -40,34 +40,34 @@ TEST_CASE("query_filters_operator_in") {
   // query E.z in {efg}
   Query<E> q1(w, {index2.In({"efg"})});
   q1.PreMatch();
-  std::unordered_set<EntityId> m1;
+  std::vector<EntityId> m1;
   q1.ForEach([&](EntityReference &e) {
     REQUIRE(e.IsAlive());
     REQUIRE(e.Get<E>().z == "efg");
-    m1.insert(e.GetId());
+    m1.push_back(e.GetId());
   });
   REQUIRE(m1 == decltype(m1){e1.GetId(), e4.GetId()});
 
   // query  F.status in {S2}
   Query<F> q2(w, {index5.In({Status::S2})});
   q2.PreMatch();
-  std::unordered_set<EntityId> m2;
+  std::vector<EntityId> m2;
   q2.ForEach([&](EntityReference &e) {
     REQUIRE(e.IsAlive());
     REQUIRE(e.Get<F>().status == Status::S2);
-    m2.insert(e.GetId());
+    m2.push_back(e.GetId());
   });
   REQUIRE(m2 == decltype(m2){e2.GetId(), e4.GetId()});
 
   // query E.z in {efg} && F.status in {S2}
   Query<F> q3(w, {index2.In({"efg"}), index5.In({Status::S2})});
   q3.PreMatch();
-  std::unordered_set<EntityId> m3;
+  std::vector<EntityId> m3;
   q3.ForEach([&](EntityReference &e) {
     REQUIRE(e.IsAlive());
     REQUIRE(e.Get<E>().z == "efg");
     REQUIRE(e.Get<F>().status == Status::S2);
-    m3.insert(e.GetId());
+    m3.push_back(e.GetId());
   });
   REQUIRE(m3 == decltype(m3){e4.GetId()});
 }

@@ -1,5 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
-#include <unordered_set>
+#include <vector>
 
 #include "shares.h"
 #include "tinyecs.h"
@@ -29,27 +29,27 @@ TEST_CASE("query_filters_operator_between") {
   // query D.x between 3;
   Query<D> q1(w, {index1.Between({44, 84})});
   q1.PreMatch();
-  std::unordered_set<EntityId> m1;
+  std::vector<EntityId> m1;
   q1.ForEach([&](EntityReference &e) {
     REQUIRE(e.IsAlive());
     auto x = e.Get<D>().x;
     REQUIRE(x >= 44);
     REQUIRE(x <= 84);
-    m1.insert(e.GetId());
+    m1.push_back(e.GetId());
   });
   REQUIRE(m1 == decltype(m1){e2.GetId(), e4.GetId()});
 
   // query D.x between 3 && F.status == S3;
   Query<D, F> q2(w, {index1.Between({44, 84}), index5 == Status::S3});
   q2.PreMatch();
-  std::unordered_set<EntityId> m2;
+  std::vector<EntityId> m2;
   q2.ForEach([&](EntityReference &e) {
     REQUIRE(e.IsAlive());
     auto x = e.Get<D>().x;
     REQUIRE(x >= 44);
     REQUIRE(x <= 84);
     REQUIRE(e.Get<F>().status == Status::S3);
-    m2.insert(e.GetId());
+    m2.push_back(e.GetId());
   });
   REQUIRE(m2 == decltype(m2){e4.GetId()});
 }

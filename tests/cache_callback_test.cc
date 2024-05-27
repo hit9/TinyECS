@@ -2,7 +2,6 @@
 
 #include "shares.h"
 #include "tinyecs.h"
-#include <unordered_set>
 
 using namespace tinyecs;
 using namespace tinyecs_tests;

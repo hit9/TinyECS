@@ -2,7 +2,7 @@
 
 #include "shares.h"
 #include "tinyecs.h"
-#include <unordered_set>
+#include <vector>
 
 using namespace tinyecs;
 using namespace tinyecs_tests;
@@ -46,14 +46,14 @@ TEST_CASE("cache_filters", "[simple]") {
 
   q1.PreMatch(), q2.PreMatch(), q3.PreMatch(), q4.PreMatch();
 
-  std::unordered_set<EntityId> m1, // {e1, e5}
-      m2,                          // {e2, e4, e5}
-      m3,                          // {e4, e5}
-      m4;                          // {e5}
-  q1.ForEach([&m1](EntityReference &e) { m1.insert(e.GetId()); });
-  q2.ForEach([&m2](EntityReference &e) { m2.insert(e.GetId()); });
-  q3.ForEach([&m3](EntityReference &e) { m3.insert(e.GetId()); });
-  q4.ForEach([&m4](EntityReference &e) { m4.insert(e.GetId()); });
+  std::vector<EntityId> m1, // {e1, e5}
+      m2,                   // {e2, e4, e5}
+      m3,                   // {e4, e5}
+      m4;                   // {e5}
+  q1.ForEach([&m1](EntityReference &e) { m1.push_back(e.GetId()); });
+  q2.ForEach([&m2](EntityReference &e) { m2.push_back(e.GetId()); });
+  q3.ForEach([&m3](EntityReference &e) { m3.push_back(e.GetId()); });
+  q4.ForEach([&m4](EntityReference &e) { m4.push_back(e.GetId()); });
 
   REQUIRE(m1 == decltype(m1){e1.GetId(), e5.GetId()});
   REQUIRE(m2 == decltype(m2){e2.GetId(), e4.GetId(), e5.GetId()});
@@ -62,14 +62,14 @@ TEST_CASE("cache_filters", "[simple]") {
 
   auto c1 = q1.Cache(), c2 = q2.Cache(), c3 = q3.Cache(), c4 = q4.Cache();
 
-  std::unordered_set<EntityId> z1, // {e1, e5}
-      z2,                          // {e2, e4, e5}
-      z3,                          // {e4, e5}
-      z4;                          // {e5}
-  c1.ForEach([&z1](EntityReference &e) { z1.insert(e.GetId()); });
-  c2.ForEach([&z2](EntityReference &e) { z2.insert(e.GetId()); });
-  c3.ForEach([&z3](EntityReference &e) { z3.insert(e.GetId()); });
-  c4.ForEach([&z4](EntityReference &e) { z4.insert(e.GetId()); });
+  std::vector<EntityId> z1, // {e1, e5}
+      z2,                   // {e2, e4, e5}
+      z3,                   // {e4, e5}
+      z4;                   // {e5}
+  c1.ForEach([&z1](EntityReference &e) { z1.push_back(e.GetId()); });
+  c2.ForEach([&z2](EntityReference &e) { z2.push_back(e.GetId()); });
+  c3.ForEach([&z3](EntityReference &e) { z3.push_back(e.GetId()); });
+  c4.ForEach([&z4](EntityReference &e) { z4.push_back(e.GetId()); });
 
   REQUIRE(z1 == m1);
   REQUIRE(z2 == m2);
@@ -81,10 +81,10 @@ TEST_CASE("cache_filters", "[simple]") {
   // {e1}, {e2,e4,e5}, {e4,e5}, {}
   e5.Get<D>().x = 9;
   z1.clear(), z2.clear(), z3.clear(), z4.clear();
-  c1.ForEach([&z1](EntityReference &e) { z1.insert(e.GetId()); });
-  c2.ForEach([&z2](EntityReference &e) { z2.insert(e.GetId()); });
-  c3.ForEach([&z3](EntityReference &e) { z3.insert(e.GetId()); });
-  c4.ForEach([&z4](EntityReference &e) { z4.insert(e.GetId()); });
+  c1.ForEach([&z1](EntityReference &e) { z1.push_back(e.GetId()); });
+  c2.ForEach([&z2](EntityReference &e) { z2.push_back(e.GetId()); });
+  c3.ForEach([&z3](EntityReference &e) { z3.push_back(e.GetId()); });
+  c4.ForEach([&z4](EntityReference &e) { z4.push_back(e.GetId()); });
   REQUIRE(z1 == decltype(z1){e1.GetId()});
   REQUIRE(z2 == decltype(z2){e2.GetId(), e4.GetId(), e5.GetId()});
   REQUIRE(z3 == decltype(z3){e4.GetId(), e5.GetId()});
@@ -102,10 +102,10 @@ TEST_CASE("cache_filters", "[simple]") {
   e4.Get<E>().z = "xyz";
 
   z1.clear(), z2.clear(), z3.clear(), z4.clear();
-  c1.ForEach([&z1](EntityReference &e) { z1.insert(e.GetId()); });
-  c2.ForEach([&z2](EntityReference &e) { z2.insert(e.GetId()); });
-  c3.ForEach([&z3](EntityReference &e) { z3.insert(e.GetId()); });
-  c4.ForEach([&z4](EntityReference &e) { z4.insert(e.GetId()); });
+  c1.ForEach([&z1](EntityReference &e) { z1.push_back(e.GetId()); });
+  c2.ForEach([&z2](EntityReference &e) { z2.push_back(e.GetId()); });
+  c3.ForEach([&z3](EntityReference &e) { z3.push_back(e.GetId()); });
+  c4.ForEach([&z4](EntityReference &e) { z4.push_back(e.GetId()); });
   REQUIRE(z1 == decltype(z1){e1.GetId(), e4.GetId(), e6.GetId()});
   REQUIRE(z2 == decltype(z2){e2.GetId(), e5.GetId()});
   REQUIRE(z3 == decltype(z3){e5.GetId()});
