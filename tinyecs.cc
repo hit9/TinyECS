@@ -99,18 +99,24 @@ IArchetype::IArchetype(ArchetypeId id, IWorld *world, size_t numComponents, size
     if (signature[i]) cols[i] = col++;
 }
 
-unsigned char *IArchetype::getEntityData(EntityShortId e) const {
+// Returns the data address of entity e.
+// It doesn't care the entity's liveness, just return the data address that should be.
+unsigned char *IArchetype::addressOf(EntityShortId e) const {
   // i is the index of the block in vector `blocks`, storing the given entity.
   // j is the index of the row in the block `i`, storing the given entity
   const auto [i, j] = __div(e, numRows);
   return blocks[i].get() + j * rowSize;
 }
 
+// Returns a reference to the target entity by giving a short entity id.
+// If the entity is not alive (dead or not born yet), returns NullEntityReference.
 EntityReference &IArchetype::get(EntityShortId e) {
   if (!isAlive(e)) return NullEntityReference;
   return uncheckedGet(e);
 }
 
+// Returns the data address of a component according to given entity data.
+// Raises std::runtime_error on unknown component.
 unsigned char *IArchetype::getComponentRawPtr(unsigned char *entityData, ComponentId cid) const {
   auto col = cols[cid];
   if (col == 0xffff)
@@ -118,6 +124,11 @@ unsigned char *IArchetype::getComponentRawPtr(unsigned char *entityData, Compone
   return entityData + col * cellSize;
 }
 
+// Allocates a seat for a new entity, including a short id and block row's memory address. Time: O(1)
+//  1. If the cemetery is not empty, reuse at first.
+//  2. Otherwise increases the internal short id cursor.
+//     What's more, allocates a new block on need.
+//  3. Constructs an entity reference at the row's head.
 std::pair<EntityShortId, unsigned char *> IArchetype::allocateForNewEntity() {
   EntityShortId e;
   unsigned char *data;
@@ -125,7 +136,7 @@ std::pair<EntityShortId, unsigned char *> IArchetype::allocateForNewEntity() {
   if (cemetery.Size()) {
     // Reuse dead entity id and space.
     e = cemetery.Pop();
-    data = getEntityData(e);
+    data = addressOf(e);
     // Reset the space to all zeros.
     std::fill_n(data, rowSize, 0);
   } else {
@@ -137,13 +148,14 @@ std::pair<EntityShortId, unsigned char *> IArchetype::allocateForNewEntity() {
       // Flush the full block space to all zeros.
       std::fill_n(blocks.back().get(), blockSize, 0);
     }
-    data = getEntityData(e);
+    data = addressOf(e);
   }
   // Constructs an entity reference at the row's head.
   new (data) EntityReference(this, data, pack(id, e));
   return {e, data};
 }
 
+// Makes an entity to be alive in the world.
 // 1. Add this entity to alives set.
 // 2. Constructs each component of this entity via initializer.
 // 3. Trigger callbacks listening for entity creations.
@@ -156,26 +168,28 @@ void IArchetype::doNewEntity(EntityShortId e, EntityReference &ref, Accessor &in
   // And the component's constructor may bind some indexes then.
   world->setLastCreatedEntityId(ref.GetId());
   initializer(ref);
-  // constructComponents(data);
   world->clearLastCreatedEntityId();
   world->afterEntityCreated(id, e);
 }
 
+// Makes an entity to be born alive.
+// Does nothing if given entity is not in the toBorn map.
 void IArchetype::applyDelayedNewEntity(EntityShortId e) {
   auto it = toBorn.find(e);
-  if (it == toBorn.end()) return;
+  if (it == toBorn.end()) return; // not find
   auto &initializer = it->second;
-  auto data = getEntityData(e);
+  auto data = addressOf(e);
   auto &ref = *toref(data);
   doNewEntity(e, ref, initializer);
   toBorn.erase(it);
 }
 
+// Kill an entity by short id at once. O(logN).
 void IArchetype::kill(EntityShortId e, Accessor *beforeKillPtr) {
   // Does nothing if given short id is invalid or already dead.
   if (e >= ecursor || cemetery.Contains(e)) return;
   // If a kill is called on a to-born/to-kill entity, then it's going to die directly.
-  auto data = getEntityData(e);
+  auto data = addressOf(e);
   // Call provided callback before all work.
   if (beforeKillPtr != nullptr) (*beforeKillPtr)(*toref(data));
   // Before removing hook.
@@ -189,14 +203,19 @@ void IArchetype::kill(EntityShortId e, Accessor *beforeKillPtr) {
   alives.erase(e);
 }
 
+// Mark an entity to be killed. O(1)
+// If the given entity is already dead, does nothing.
+// Parameter beforeKillPtr is a pointer to a function, which is to be execute before the killing is applied.
 void IArchetype::delayedKill(EntityShortId e, Accessor *beforeKillPtr) {
   if (isAlive(e)) {
-    auto callback = *beforeKillPtr; // copy
-    toKill.insert({e, callback});
+    const auto &callback = *beforeKillPtr;
+    toKill.insert({e, callback}); // copy
     world->addDelayedKillEntity(id, e);
   }
 }
 
+// Kill a delayed to kill entity by short entity id.
+// Does nothing if given entity is not in the toKill map.
 void IArchetype::applyDelayedKill(EntityShortId e) {
   auto it = toKill.find(e);
   if (it == toKill.end()) return;
@@ -310,6 +329,7 @@ AIds Matcher::Match(MatchRelation relation, const Signature &signature) const {
     ans = matchAll(signature);
     break;
   case MatchRelation::ANY:
+    // For Any<>, means matching all.
     if (signature.none()) ans = all;
     else
       ans = matchAny(signature);
@@ -318,6 +338,7 @@ AIds Matcher::Match(MatchRelation relation, const Signature &signature) const {
     ans = matchNone(signature);
     break;
   }
+  // Make an unordered set of matched archetype ids.
   AIds results;
   for (int i = 0; i < MaxNumArchetypesPerWorld; i++)
     if (ans[i]) results.insert(i);
@@ -325,6 +346,7 @@ AIds Matcher::Match(MatchRelation relation, const Signature &signature) const {
 }
 
 Matcher::ArchetypeIdBitset Matcher::matchAll(const Signature &signature) const {
+  // all & b[c1] & b[c2] & ...
   ArchetypeIdBitset ans = all;
   for (int i = 0; i < MaxNumComponents; i++)
     if (signature[i]) ans &= b[i];
@@ -332,6 +354,7 @@ Matcher::ArchetypeIdBitset Matcher::matchAll(const Signature &signature) const {
 }
 
 Matcher::ArchetypeIdBitset Matcher::matchAny(const Signature &signature) const {
+  // b[c1] | b[c2] | ...
   ArchetypeIdBitset ans;
   for (int i = 0; i < MaxNumComponents; i++)
     if (signature[i]) ans |= b[i];
@@ -398,7 +421,8 @@ void World::ApplyDelayedKills() {
   while (!toKill.empty()) {
     auto eid = toKill.front();
     toKill.pop_front();
-    archetypes[__internal::unpack_x(eid)]->applyDelayedKill(__internal::unpack_y(eid));
+    auto aid = __internal::unpack_x(eid);
+    if (aid < archetypes.size()) { archetypes[aid]->applyDelayedKill(__internal::unpack_y(eid)); }
   }
 }
 
@@ -406,7 +430,8 @@ void World::ApplyDelayedNewEntities() {
   while (!toBorn.empty()) {
     auto eid = toBorn.front();
     toBorn.pop_front();
-    archetypes[__internal::unpack_x(eid)]->applyDelayedNewEntity(__internal::unpack_y(eid));
+    auto aid = __internal::unpack_x(eid);
+    if (aid < archetypes.size()) { archetypes[aid]->applyDelayedNewEntity(__internal::unpack_y(eid)); }
   }
 }
 
@@ -422,8 +447,9 @@ uint32_t World::pushCallback(int flag, const __internal::AIdsPtr aids, const Cal
 }
 
 void World::triggerCallbacks(ArchetypeId aid, EntityShortId e, int flag) {
-  for (const auto *cb : callbackTable[flag][aid]) {
-    auto a = archetypes[aid].get();
+  const auto &callbacks = callbackTable[flag][aid];
+  auto a = archetypes[aid].get();
+  for (const auto *cb : callbacks) {
     cb->func(a->uncheckedGet(e));
   }
 }
@@ -448,6 +474,8 @@ void IFieldIndexRoot::onUpdate(EntityId eid) {
 //////////////////////////
 /// Query
 //////////////////////////
+
+using EntityIdSet = std::unordered_set<EntityId>; // unordered set of entity ids
 
 // ~~~~~~~~~~ IQuery Filters ~~~~~~~~~~~~~~~~~~~
 
@@ -495,7 +523,7 @@ IQuery &IQuery::PreMatch() {
   aids = world.matcher->MatchAndStore(relation, signature);
   const auto &aidSet = *aids;
   // redundancy pointers of matched archetypes
-  for (const auto &aid : aidSet)
+  for (const auto aid : aidSet)
     archetypes[aid] = world.archetypes[aid].get();
   // redundancy a vector of sorted archetype ids
   orderedAids = std::vector<ArchetypeId>(aidSet.begin(), aidSet.end());

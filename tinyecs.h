@@ -49,9 +49,8 @@ class IArchetype;
 
 namespace __internal { // DO NOT USE NAMES FROM __internal
 
-using EntityIdSet = std::unordered_set<EntityId>; // unordered set of entity ids
-using AIds = std::unordered_set<ArchetypeId>;     // unordered set of archetype ids.
-using AIdsPtr = std::shared_ptr<AIds>;            // shared pointer to a set of archetype ids.
+using AIds = std::unordered_set<ArchetypeId>; // unordered set of archetype ids.
+using AIdsPtr = std::shared_ptr<AIds>;        // shared pointer to a set of archetype ids.
 
 // Layout of an entity id:
 //                    <x>                         <y>
@@ -158,15 +157,15 @@ public:
   inline EntityId GetId() const { return id; }
   // Returns the id of this entity's archetype.
   inline ArchetypeId GetArchetypeId() const { return a->GetId(); }
-  // Two entity references are equal if their data address is the same.
+  // Two entity references are equal if their data addresses are the same.
   bool operator==(const EntityReference &o) const { return data == o.data; }
   // Returns a component of this entity by given component type.
   // Throws a std::runtime_error if the given component is not part of this entity's archetype.
-  template <typename Component> inline Component &Get() { return *a->getComponentPtr<Component>(data); }
+  template <typename Component> inline Component &Get() { return *(a->getComponentPtr<Component>(data)); }
   // UncheckedGet is similar to Get(), but won't validate column's legality.
   // Use it if the component is guaranteed to be part of this entity's archetype.
   template <typename Component> inline Component &UncheckedGet() {
-    return *a->uncheckedGetComponentPtr<Component>(data);
+    return *(a->uncheckedGetComponentPtr<Component>(data));
   }
   // Kill this entity right now.
   inline void Kill() { a->kill(__internal::unpack_y(id), nullptr); }
@@ -184,7 +183,7 @@ public:
   inline bool IsAlive(void) const { return a != nullptr && a->isAlive(__internal::unpack_y(id)); }
   // Constructs a component of this entity.
   // The component class must have a corresponding constructor.
-  // And the field index binding must be done in that constructor.
+  // And the field index binding must be done in that constructor, if any.
   template <typename Component, typename... Args> void Construct(Args... args) {
     auto ptr = a->getComponentPtr<Component>(data);
     new (ptr) Component(std::forward<Args>(args)...);
@@ -228,7 +227,7 @@ public:
   void Add(EntityShortId e);            // Worst O(block allocation times), best O(1)
   EntityShortId Pop();                  // O(1)
   void Reserve(size_t n);               // Reserve for n blocks.
-  size_t NumBlocks() const { return blocks.size(); }
+  inline size_t NumBlocks() const { return blocks.size(); }
 
 private:
   // FIFO reuse. use deque instead of list, reason:
@@ -245,7 +244,7 @@ private:
   std::vector<std::unique_ptr<std::bitset<NumRowsPerBlock>>> blocks;
   // Redundancy of: blocks.size() * NumRowsPerBlock
   // Perform addition for `bound` on each `Add()`, and the multiplication operation in the method Contains()
-  // could be omitted. Contains() calls requires to be fast.
+  // could be omitted. Contains() calls are required to be fast.
   size_t bound = 0;
 };
 
@@ -296,8 +295,6 @@ private:
   // cols[componentID] => column number in this archetype.
   // Max memory usage estimate in a world:
   // N(archetypes) x N(components) * sizeof(uint16_t) = 4096 * 128 * 2 = 1MB
-  static const size_t numRows = MaxNumEntitiesPerBlock;
-  const size_t numCols, cellSize, rowSize, blockSize;
   uint16_t cols[MaxNumComponents];
   // Block layout:
   //
@@ -309,25 +306,23 @@ private:
   //
   // The vector stores pointers of block buffer, not the block itself,
   // avoiding buffer copying during vector capacity growing.
+  static const size_t numRows = MaxNumEntitiesPerBlock;
+  const size_t numCols, cellSize, rowSize, blockSize;
   std::vector<std::unique_ptr<unsigned char[]>> blocks;
 
   // Returns a reference to the signature of this archetype.
   inline const Signature &getSignature() const { return signature; };
-  // Returns the data address of entity e.
-  // It doesn't care the entity's liveness, just return the data address that should be.
-  unsigned char *getEntityData(EntityShortId e) const;
+  unsigned char *addressOf(EntityShortId e) const;
   // Get EntityReference by given short entity id.
   // Won't check the entity's liveness.
-  inline EntityReference &uncheckedGet(EntityShortId e) { return *toref(getEntityData(e)); }
-  // Returns a reference to the target entity by giving a short entity id.
-  // If the entity is not alive (dead or not born yet), returns NullEntityReference.
+  inline EntityReference &uncheckedGet(EntityShortId e) { return *toref(addressOf(e)); }
   EntityReference &get(EntityShortId e);
 
   // Internal foreach methods in forward and backward directions.
   void forEachUntilForward(const AccessorUntil &cb);
   void forEachUntilBackward(const AccessorUntil &cb);
 
-  friend World;   // for get, uncheckedGet, getSignature, kill, isAlive, delayedKill
+  friend World;   // for get, uncheckedGet, kill, isAlive, delayedKill
   friend IQuery;  // for get, forEachUntilForward, forEachUntilBackward
   friend ICacher; // for get, uncheckedGet
 
@@ -343,30 +338,14 @@ protected:
   inline bool isAlive(EntityShortId e) const override {
     return e < ecursor && !cemetery.Contains(e) && !toBorn.contains(e);
   }
-
   //~~~~~~~~ Kill Entity ~~~~~~~~~~~~~~
-  // kill an entity by short id at once. O(logN).
   void kill(EntityShortId e, Accessor *cb) override;
-  // Mark an entity to be killed. O(1)
-  // If the given entity is already dead, does nothing.
-  // Parameter beforeKillPtr is a pointer to a function, which is to be execute before the killing is applied.
   void delayedKill(EntityShortId e, Accessor *beforeKillPtr) override;
-  // Kill a delayed to kill entity by short entity id.
-  // Does nothing if given entity is not in the toKill map.
   void applyDelayedKill(EntityShortId e);
-
   //~~~~~~~~ New Entity ~~~~~~~~~~~~~~
-  // Allocates a seat for a new entity, including a short id and block row's memory address. Time: O(1)
-  //  1. If the cemetery is not empty, reuse at first.
-  //  2. Otherwise increases the internal short id cursor.
-  //     What's more, allocates a new block on need.
   std::pair<EntityShortId, unsigned char *> allocateForNewEntity();
-  // Makes an entity to be alive in the world.
   void doNewEntity(EntityShortId e, EntityReference &ref, Accessor &initializer);
-  // Makes an entity to be born alive.
-  // Does nothing if given entity is not in the toBorn map.
   void applyDelayedNewEntity(EntityShortId e);
-
   // ~~~~~~~ for Archetype Impl ~~~~~~~~~~
   // Call default destructors of all components of an entity by providing entity data address.
   virtual void destructComponents(unsigned char *data) = 0;
@@ -388,17 +367,17 @@ public:
   // Note: cemetery+toBorn should always not larger than ecursor, thus minus on size_t is safe.
   inline size_t NumEntities() const { return ecursor - cemetery.Size() - toBorn.size(); }
   // Creates a new entity at once, try to reuse dead entity's id and memory space at first,
-  // otherwise allocating a new seat from underlying block, and allocates a new block on need.
+  // otherwise allocating a new seat from underlying blocks, and allocates a new block on need.
   // Returns a reference to the created entity.
   // Parameter initializer is a function to initialize all component data for the new entity.
-  // If the initializer is not provided, the default constructor will be called without any arguments.
-  // Time complexity: O(logN) to maintain the set alives.
+  // If the initializer is not provided, the default constructor of each component will be called
+  // without any arguments.
+  // Time complexity: O(logN), to maintain the set alives.
   EntityReference &NewEntity();
   EntityReference &NewEntity(Accessor &initializer);
   inline EntityReference &NewEntity(Accessor &&initializer) { return NewEntity(initializer); }
-  // Creates a new entity later, returns a reference to the entity.
+  // Creates a new entity later, returns the id of the entity.
   // Finally we should call world.ApplyDelayedNewEntities() to make it take effect.
-  // Returns the pre-allocated entity id.
   // Parameter initializer is a function to initialize all component data for the new entity.
   // Although it's still considered not-alive, but we allocate an entity id and un-initialized space in
   // advance. It's meaningless to get the reference of a to-born entity and set data to it before it's applied
@@ -409,7 +388,7 @@ public:
   EntityId DelayedNewEntity(Accessor &initializer);
   inline EntityId DelayedNewEntity(Accessor &&initializer) { return DelayedNewEntity(initializer); }
   // Run given callback function for all alive entities in this archetype.
-  // It will iterate entities in order of id from smaller to larger.
+  // It will iterate entities in the order of id from smaller to larger.
   void ForEach(const Accessor &cb, const bool reversed = false);
   // ForEach is allowed to pass in a temporary function.
   // Templates and reference folding are not used here, but overloading is used.
@@ -531,7 +510,7 @@ public:
   // No matter whether a `beforeKilled` function is provided, the destructor of each component of the entity
   // will be called on the entity's death.
   void DelayedKill(EntityId eid, Accessor &beforeKilled);
-  // forward right reference for temporary beforeKilled parameter.
+  // Forward right reference for temporary beforeKilled parameter.
   inline void DelayedKill(EntityId eid, Accessor &&beforeKilled) { DelayedKill(eid, beforeKilled); }
   // Returns the reference to an entity by entity id.
   // Returns the NullEntityReference if given entity does not exist, of which method IsAlive() == false,
@@ -587,7 +566,7 @@ private:
   // Key is callback's id
   std::unordered_map<uint32_t, std::unique_ptr<Callback>> callbacks;
   // Callback table's pointers are stored continuously in memory for an archetype and certain flag.
-  // Format: callbackTable[flag][archetype id] => callbacks ponters.
+  // Format: callbackTable[flag][archetype id] => callbacks pointers.
   // Purpose: redundancy for performant triggering callbacks
   std::vector<std::vector<const Callback *>> callbackTable[2];
 
@@ -619,12 +598,12 @@ enum class OP { EQ, NE, LT, LE, GT, GE, IN, BT };
 // forward declarations
 template <typename Value> class SimpleFilter;            // ==,!=
 template <typename Value> class OrderedComparatorFilter; // <,<=,>,>=
-template <typename Value> class InFilter;
-template <typename Value> class BetweenFilter;
+template <typename Value> class InFilter;                // index.In({v1,v2,v3,...})
+template <typename Value> class BetweenFilter;           // index.Between({start, end})
 
 class IFieldIndexRoot; // forward declaration.
 
-// CallbackOnIndexValueUpdated is a internal callback function.
+// CallbackOnIndexValueUpdated is an internal callback function.
 // Which is called when a value of associated index is updated.
 using CallbackOnIndexValueUpdated = std::function<void(IFieldIndexRoot *, EntityId)>;
 
@@ -769,7 +748,7 @@ public:
   auto Between(const std::pair<Value, Value> &rhs) const { return std::make_shared<BetweenFilter<Value>>(const_cast<This *>(this), rhs); } // [first, second]
 }; // clang-format on
 
-// IFieldIndexImpl is the base of index implementation classes. Wehere Value is the field value's type,
+// IFieldIndexImpl is the base of index implementation classes. Where Value is the field value's type,
 // Container is the contaienr type, Iterator is the type of the Container's iterator.
 template <typename Value, typename Container, typename Iterator> class IFieldIndexImpl {
 public:
@@ -781,7 +760,7 @@ public:
   // Creates a new value into this index, returns the position iterator.
   // Returns end() if failure or we shouldn't insert a value to the index.
   virtual Iterator Insert(Value &v) = 0;
-  // Replace the value located at position provided by given iterator.
+  // Replace the value locating at position provided by given iterator.
   virtual Iterator Update(Iterator &it, Value &v) = 0;
   // Returns the end iterator.
   virtual const Iterator End() = 0;
@@ -797,7 +776,6 @@ class MapBasedFieldIndex
 public:
   using Container = TMap;
   using Iterator = TIterator;
-
   // ~~~~~~~ Impl IFieldIndexImpl ~~~~~~~~~~~
   inline size_t Size() const override { return m.size(); }
   void Erase(Iterator &it) override { m.erase(it); }
@@ -1075,8 +1053,8 @@ public:
   // The order of iteration is according to the entity ids from small to large,
   // and entities in the same archetype will be accessed next to each other.
   // It's **undefined behavior** to create/remove entities, or update indexes associated with this
-  // cacher's in given callback. For such situations, consider to create and remove entities at frame
-  // begin or end, or just use Collect() to safely work on a copy.
+  // cacher's filters in given callback. For such situations, consider to create and remove entities
+  // at frame begin or end via DelayedXXX methods, or just use Collect() to safely work on a copy.
   void ForEach(const Accessor &cb, bool reversed = false);
   inline void ForEach(const Accessor &&cb, bool reversed = false) { ForEach(cb, reversed); }
   inline void ForEachUntil(const AccessorUntil &cb, bool reversed = false) { forEachUntil(cb, reversed); }
@@ -1118,7 +1096,7 @@ private:
 // Cacher caches results from a query and automatically watching changes.
 // For instance, if an entity is created and it matches the cache's interested components
 // and filters, then it will be added to the internal cache automatically. And the same
-// mechanism for entity removes.
+// mechanism for entity removes, and index field updatings.
 template <typename Compare = std::less<EntityId>> class Cacher : public ICacher {
   // Use a map instead of unordered_map, reason:
   // We should respect the continuity of entities in memory when iterating over the cache.
@@ -1167,7 +1145,7 @@ private:
 
   void forEachUntilBackward(const AccessorUntil &cb) {
     for (auto it = cache.rbegin(); it != cache.rend(); ++it) {
-      auto ref = it->second;
+      auto &ref = it->second;
       if (cb(ref)) break;
     }
   }
@@ -1189,9 +1167,8 @@ public:
   // Uses a standalone method instead of pre-match inside the constructor is more explicit.
   IQuery &PreMatch();
 
-  // Append filters, it's important to know that the left a filter is,
-  // the earlier it will be executed, so the filter with higher
-  // distinction should be placed firstly.
+  // Append filters, it's important to know that the left a filter is, the earlier it will be
+  // executed, so the filter with higher distinction should be placed firstly.
   IQuery &Where(const Filter &f);   // copy one
   IQuery &Where(Filter &&f);        // move one
   IQuery &Where(const Filters &fl); // copy multiple
@@ -1203,7 +1180,7 @@ public:
   // The order of iteration is according to the entity ids from small to large,
   // and entities in the same archetype will be accessed next to each other.
   // Internal brief:
-  // 1. If filters are provided, apply filters and then iterates matched entities for each archetype.
+  // 1. If filters are provided, apply filters and then iterates matched entities.
   // 2. Otherwise, this is a simple query just about some archetypes, for each archetype, run with
   //    all entities managed by archetypes.
   // It's **undefined behavior** if the callback contains logics that creates or removes entities.
@@ -1229,7 +1206,6 @@ public:
   // changes will be maintained in the cache automatically.
   // The cacher will maintain the entities in the order entity id from small to large.
   [[nodiscard]] Cacher<> Cache() { return Cacher<>(*this, world, archetypes, aids, filters); }
-
   // Constructs a cache from this query, with a custom compare function.
   template <typename Compare> [[nodiscard]] inline Cacher<Compare> Cache(Compare cmp) {
     return Cacher<Compare>(*this, world, archetypes, aids, filters, cmp);
