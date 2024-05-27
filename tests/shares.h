@@ -22,7 +22,7 @@ struct C {
 extern OrderedFieldIndex<int> index1;
 struct D {
   FieldProxy<int, decltype(index1)> x = 0;
-  D() { x.BindIndex(index1); }
+  D(int v = 0) : x(v) { x.BindIndex(index1); }
 };
 
 extern OrderedFieldIndex<std::string> index2;
@@ -36,14 +36,14 @@ struct E {
     x.BindIndex(index3);
     z.BindIndex(index2);
   }
-  E() { BindIndexes(); }
+  E(float y = 3.14, int x = 0, const std::string &z = "abc") : y(y), x(x), z(z) { BindIndexes(); }
   E(int x, const std::string &z = "abc") : x(x), z(z) { BindIndexes(); }
 };
 
 extern UnorderedFieldIndex<Status> index5;
 struct F {
   FieldProxy<Status, decltype(index5)> status = Status::S1;
-  F() { status.BindIndex(index5); }
+  F(Status s=Status::S1) : status(s) { status.BindIndex(index5); }
 };
 
 extern UnorderedFieldIndex<bool> index6;
