@@ -355,9 +355,9 @@ protected:
 public:
   IArchetype(ArchetypeId id, IWorld *world, size_t numComponents, size_t cellSize,
              const Signature &signature);
-  virtual ~IArchetype() {}
-  IArchetype(const IArchetype &o) = delete;
-  IArchetype &operator=(const IArchetype &o) = delete;
+  virtual ~IArchetype() = default;                     // required by unique_ptr's reset, also disable move
+  IArchetype(const IArchetype &o) = delete;            // disable copy
+  IArchetype &operator=(const IArchetype &o) = delete; // disable copy
   inline ArchetypeId GetId() const override { return id; }
   // Returns number of blocks.
   inline size_t NumBlocks() const { return blocks.size(); }
@@ -1031,7 +1031,7 @@ struct FieldProxy<Value, TFieldIndex> : public __internal::FieldProxyBase<Value,
   } // s += "abc"
 };
 
-// Type of a vector constant filter pointers.
+// Type of a vector of filter pointers.
 using Filter = std::shared_ptr<const __internal::IFilter>;
 using Filters = std::vector<Filter>;
 
@@ -1082,7 +1082,7 @@ private:
   World &world;
   const AIdsPtr aids; // stored in matcher.
   const std::unordered_map<ArchetypeId, IArchetype *> archetypes;
-  const Filters filters; // optional empty
+  const Filters filters; // optional empty, copy from an Query object.
   // ecbs: callbacks for cache, watching entities create/remove.
   std::vector<uint32_t> ecbs;
   // ucbs: callbacks for cache watching index updates.
