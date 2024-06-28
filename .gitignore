@@ -5,6 +5,5 @@ build
 CMakeUserPresets.json
 Testing
 .env
-main.cc
 CMakeCache.txt
 CMakeFiles
