@@ -83,5 +83,17 @@ int main(void) {
     std::cout << e.UncheckedGet<Tag>().value << std::endl;
   });
 
+
+  // Make a cacher from query q1.
+  auto cacher = q1.Cache();
+  // Changes are applied to the cacher automatically and incrementally.
+  // e.g. Let us creates one more soldier.
+  auto &s = soldier.NewEntity();
+  s.Get<Position>().x = 10010;
+  q1.ForEach([](tinyecs::EntityReference &e) {
+    const auto &pos = e.UncheckedGet<Position>();
+    std::cout << pos.x << "," << pos.y << std::endl;
+  });
+
   return 0;
 }
