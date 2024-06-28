@@ -74,7 +74,11 @@ class Archetype {
 };
 ```
 
-And at the head of each row, we store an `EntityReference`,
+A new block is allocated on demand. By default, a block consists of 1024 rows (entities).
+If you worry about the dynamic allocation's performance, there's also a `Reserve(numEntities)` method available,
+it pre-allocates enough blocks for given number of entities.
+
+At the head of each row, we store an `EntityReference`,
 which is a reference-like structure helps to access entity's data.
 Instead of obtaining out the whole entity for further operations,
 the entity reference is more lightweight.
