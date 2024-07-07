@@ -12,6 +12,39 @@ Quick Example
 
 Checkout [example/main.cc](example/main.cc) please.
 
+Qiuck Overview
+--------------
+
+```cpp
+Query<A, B> q(world);   // Query entities matching component A and B.
+q.PreMatch();           // Pre-match archetypes by components.
+q.Where(X <= 999)       // Index by field value.
+  .ForEach([](EntityReference& e) { ... });  // Scan entity in memory order.
+
+//                                             +-----------------+
+//                                             |      Index X    |        +-------------------+
+//                                             +-----------------+        |   Component B     |
+//                                             |  x => EntityId  |        |-------------------|
+//                                             |-----------------|        |     struct B {    |
+// +-------------+                             |  x => EntityId  |  <-----|------- int x;     |
+// |    World    |                             |-----------------|        |     };            |
+// |-------------|       +-------------+       |  x => EntityId  |        +-------------------+
+// |     A* -----|-----> |  Archetype  |       +-----------------+                  ^
+// |     A*      |       |-------------|                                            |
+// |     A*      |       | +---------+ |                                            |
+// +-------------+       | | Blocks  | |                                            |
+//                       | |---------| |      +-------------------------------------|-------------+
+//                       | |   B* ---|-|----> |                       Block         |             |
+//                       | |---------| |      |-------------------------------------|-------------|
+//                       | |   B*    | |      | EntityReference | Component A | Component B | ... |
+//                       | +---------+ |      |---------------------------------------------------|
+//                       |             |      | EntityReference | Component A | Component B | ... |
+//                       | +---------+ |      |---------------------------------------------------|
+//                       | | Cemetry | |      | EntityReference | Component A | Component B | ... |
+//                       | +---------+ |      +---------------------------------------------------+
+//                       +-------------+
+```
+
 Concepts and Internals in brief
 -------------------------------
 
