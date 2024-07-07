@@ -42,7 +42,7 @@ q.Where(X <= 999)       // Index by field value.
 //                  | +---------+ |     |---------------------------------------------------|
 //                  | | Cemetry | |     | EntityReference | Component A | Component B | ... |
 //                  | +---------+ |     +---------------------------------------------------+
-//                  +-------------+
+//                  +-------------+                A block is entities X components 2D table.
 ```
 
 Concepts and Internals in brief
