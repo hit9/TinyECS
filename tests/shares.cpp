@@ -1,4 +1,4 @@
-#include "shares.h"
+#include "Shares.h"
 
 namespace TinyECS_Tests
 {

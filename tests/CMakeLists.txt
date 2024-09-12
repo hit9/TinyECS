@@ -12,13 +12,10 @@ include_directories(".." ".")
 find_package(Catch2 CONFIG REQUIRED)
 
 # Targets
-file(GLOB TEST_SOURCES *_test.cpp ../TinyECS.cpp shares.cpp)
-file(GLOB BENCHMARK_SOURCES *_benchmark.cpp ../TinyECS.cpp)
+file(GLOB TEST_SOURCES *Test.cpp ../TinyECS.cpp Shares.cpp)
 add_executable(TinyECS_Tests ${TEST_SOURCES})
-# add_executable(TinyECS_benchmark ${BENCHMARK_SOURCES})
 
 target_link_libraries(TinyECS_Tests PRIVATE Catch2::Catch2WithMain)
-# target_link_libraries(TinyECS_benchmark PRIVATE Catch2::Catch2WithMain)
 
 include(CTest)
 include(Catch)
