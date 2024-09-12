@@ -1,4 +1,4 @@
-tinyecs
+TinyECS
 =======
 
 A simple archetype based ECS library in C++.
@@ -351,7 +351,7 @@ q.ForEach(
 
 At the end, there're also `TinyECS::QueryAny<...>` and `TinyECS::QueryNone<...>` available.
 
-The above is the all about tinyecs, It should probably be called EC instead of ECS, since there's no `System`'s role here,
+The above is the all about TinyECS, It should probably be called EC instead of ECS, since there's no `System`'s role here,
 more like a data query thing.
 
 
