@@ -40,8 +40,11 @@ namespace tinyecs
 	using Signature = std::bitset<MaxNumComponents>;
 
 	// ~~~~~~~~ Forward declarations. ~~~~~~~~~~
+
 	class World;
+
 	class EntityReference;
+
 	namespace __internal
 	{ // DO NOT USE NAMES FROM __internal
 		class ICacher;
