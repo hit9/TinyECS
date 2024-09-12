@@ -1,19 +1,19 @@
 defalut: build
 
 cmake-build:
-	cmake -S  . -B build \
+	cmake -S  . -B Build \
 	-DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_CXX_STANDARD=20 \
 	-DCMAKE_EXPORT_COMPILE_COMMANDS=1
 
 build: cmake-build
-	cd build && make
+	cd Build && make
 
 clean:
-	make -C build clean
+	make -C Build clean
 
 lint:
 	cppcheck . --enable=warning,style,performance,portability\
-		--inline-suppr --language=c++ --std=c++20 -i main.cpp -i build -i tests
+		--inline-suppr --language=c++ --std=c++20 -i main.cpp -i Build -i Tests
 
 .PHONY: build

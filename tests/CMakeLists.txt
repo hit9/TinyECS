@@ -7,12 +7,12 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
 
 enable_testing()
 
-include_directories(".." ".")
+include_directories("../Source" ".")
 
 find_package(Catch2 CONFIG REQUIRED)
 
 # Targets
-file(GLOB TEST_SOURCES *Test.cpp ../TinyECS.cpp Shares.cpp)
+file(GLOB TEST_SOURCES *Test.cpp ../Source/TinyECS.cpp Shares.cpp)
 add_executable(TinyECS_Tests ${TEST_SOURCES})
 
 target_link_libraries(TinyECS_Tests PRIVATE Catch2::Catch2WithMain)
