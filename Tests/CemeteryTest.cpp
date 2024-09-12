@@ -8,7 +8,7 @@ using namespace TinyECS_Tests;
 
 TEST_CASE("cemetery/1", "[simple]")
 {
-	__internal::Cemetery cemetery;
+	Internal::Cemetery cemetery;
 	REQUIRE(!cemetery.Contains(3777));
 	REQUIRE(cemetery.Size() == 0);
 	cemetery.Add(3777);
@@ -25,14 +25,14 @@ TEST_CASE("cemetery/1", "[simple]")
 
 TEST_CASE("cemetery/2", "[allocates new block]")
 {
-	__internal::Cemetery cemetery;
+	Internal::Cemetery cemetery;
 	EntityShortId		 e = 0;
-	for (int i = 0; i < __internal::Cemetery::NumRowsPerBlock; i++)
+	for (int i = 0; i < Internal::Cemetery::NumRowsPerBlock; i++)
 		cemetery.Add(e++);
-	REQUIRE(cemetery.Size() == __internal::Cemetery::NumRowsPerBlock);
-	for (int i = 0; i < __internal::Cemetery::NumRowsPerBlock; i++)
+	REQUIRE(cemetery.Size() == Internal::Cemetery::NumRowsPerBlock);
+	for (int i = 0; i < Internal::Cemetery::NumRowsPerBlock; i++)
 		cemetery.Add(e++);
-	REQUIRE(cemetery.Size() == 2 * __internal::Cemetery::NumRowsPerBlock);
+	REQUIRE(cemetery.Size() == 2 * Internal::Cemetery::NumRowsPerBlock);
 	EntityShortId e1 = 0x7ffff;
 	cemetery.Add(e1);
 	REQUIRE(cemetery.Contains(e1));
@@ -48,7 +48,7 @@ TEST_CASE("cemetery/2", "[allocates new block]")
 
 TEST_CASE("cemetery/3", "[reserve]")
 {
-	__internal::Cemetery cemetery;
+	Internal::Cemetery cemetery;
 	REQUIRE(cemetery.NumBlocks() == 0);
 	cemetery.Reserve(2); // number of blocks
 	REQUIRE(cemetery.NumBlocks() == 2);

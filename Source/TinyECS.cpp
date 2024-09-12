@@ -11,7 +11,7 @@
 namespace TinyECS
 {
 
-	namespace __internal
+	namespace Internal
 	{
 
 		ComponentId			   IComponentBase::NextId = 0;
@@ -436,7 +436,7 @@ namespace TinyECS
 			return all & ~MatchAny(signature);
 		}
 
-	} // namespace __internal
+	} // namespace Internal
 
 	//////////////////////////
 	/// World
@@ -444,50 +444,50 @@ namespace TinyECS
 
 	bool World::IsAlive(EntityId eid) const
 	{
-		auto aid = __internal::UnpackX(eid);
+		auto aid = Internal::UnpackX(eid);
 		if (aid >= archetypes.size())
 			return false;
-		return archetypes[aid]->IsAlive(__internal::UnpackY(eid));
+		return archetypes[aid]->IsAlive(Internal::UnpackY(eid));
 	}
 
 	void World::Kill(EntityId eid)
 	{
-		auto aid = __internal::UnpackX(eid);
+		auto aid = Internal::UnpackX(eid);
 		if (aid >= archetypes.size())
 			return;
-		archetypes[aid]->Kill(__internal::UnpackY(eid), nullptr);
+		archetypes[aid]->Kill(Internal::UnpackY(eid), nullptr);
 	}
 
 	void World::DelayedKill(EntityId eid)
 	{
-		auto aid = __internal::UnpackX(eid);
+		auto aid = Internal::UnpackX(eid);
 		if (aid >= archetypes.size())
 			return;
-		archetypes[aid]->DelayedKill(__internal::UnpackY(eid), nullptr);
+		archetypes[aid]->DelayedKill(Internal::UnpackY(eid), nullptr);
 	}
 
 	void World::DelayedKill(EntityId eid, Accessor& beforeKilled)
 	{
-		auto aid = __internal::UnpackX(eid);
+		auto aid = Internal::UnpackX(eid);
 		if (aid >= archetypes.size())
 			return;
-		archetypes[aid]->DelayedKill(__internal::UnpackY(eid), &beforeKilled);
+		archetypes[aid]->DelayedKill(Internal::UnpackY(eid), &beforeKilled);
 	}
 
 	EntityReference& World::Get(EntityId eid) const
 	{
-		auto aid = __internal::UnpackX(eid);
+		auto aid = Internal::UnpackX(eid);
 		if (aid >= archetypes.size())
-			return __internal::NullEntityReference;
+			return Internal::NullEntityReference;
 		auto& a = archetypes[aid];
-		return a->Get(__internal::UnpackY(eid));
+		return a->Get(Internal::UnpackY(eid));
 	}
 
 	EntityReference& World::UncheckedGet(EntityId eid) const
 	{
-		auto  aid = __internal::UnpackX(eid);
+		auto  aid = Internal::UnpackX(eid);
 		auto& a = archetypes[aid];
-		return a->UncheckedGet(__internal::UnpackY(eid));
+		return a->UncheckedGet(Internal::UnpackY(eid));
 	}
 
 	void World::RemoveCallback(uint32_t id)
@@ -507,10 +507,10 @@ namespace TinyECS
 		{
 			auto eid = toKill.front();
 			toKill.pop_front();
-			auto aid = __internal::UnpackX(eid);
+			auto aid = Internal::UnpackX(eid);
 			if (aid < archetypes.size())
 			{
-				archetypes[aid]->ApplyDelayedKill(__internal::UnpackY(eid));
+				archetypes[aid]->ApplyDelayedKill(Internal::UnpackY(eid));
 			}
 		}
 	}
@@ -521,17 +521,17 @@ namespace TinyECS
 		{
 			auto eid = toBorn.front();
 			toBorn.pop_front();
-			auto aid = __internal::UnpackX(eid);
+			auto aid = Internal::UnpackX(eid);
 			if (aid < archetypes.size())
 			{
-				archetypes[aid]->ApplyDelayedNewEntity(__internal::UnpackY(eid));
+				archetypes[aid]->ApplyDelayedNewEntity(Internal::UnpackY(eid));
 			}
 		}
 	}
 
 	// Push a callback function into management to subscribe create and kill enntities events
 	// inside any of given archetypes.
-	uint32_t World::PushCallback(int flag, const __internal::AIdsPtr aids, const Callback::Func& func)
+	uint32_t World::PushCallback(int flag, const Internal::AIdsPtr aids, const Callback::Func& func)
 	{
 		uint32_t id = nextCallbackId++; // TODO: handle overflow?
 		auto	 cb = std::make_unique<Callback>(id, flag, func, aids);
@@ -555,7 +555,7 @@ namespace TinyECS
 	/// Filter
 	//////////////////////////
 
-	namespace __internal
+	namespace Internal
 	{
 
 		uint32_t IFieldIndexRoot::OnIndexValueUpdated(const CallbackOnIndexValueUpdated& cb)
@@ -688,13 +688,13 @@ namespace TinyECS
 				// Run callback function for each entity.
 				// Note: No need to check whether an entity belongs to this query's archetypes.
 				// Because the function initial collector of the first filter guarantees it.
-				auto aid = __internal::UnpackX(eid);
+				auto aid = Internal::UnpackX(eid);
 
 				// Use get instead of uncheckedGet to ensure the entity is still alive.
 				// Given callback might kill some entity.
 				// TODO: shall we use uncheckedGet here? if user promise there's no entity killings
 				// inside the callback.
-				auto& ref = archetypes[aid]->Get(__internal::UnpackY(eid));
+				auto& ref = archetypes[aid]->Get(Internal::UnpackY(eid));
 				if (cb(ref))
 					break;
 			}
@@ -705,8 +705,8 @@ namespace TinyECS
 			for (auto it = st.rbegin(); it != st.rend(); ++it)
 			{
 				auto  eid = *it;
-				auto  aid = __internal::UnpackX(eid);
-				auto& ref = archetypes[aid]->Get(__internal::UnpackY(eid));
+				auto  aid = Internal::UnpackX(eid);
+				auto& ref = archetypes[aid]->Get(Internal::UnpackY(eid));
 				if (cb(ref))
 					break;
 			}
@@ -828,7 +828,7 @@ namespace TinyECS
 
 		// Executes the query at once and cache them into cache container.
 		// Then setup callbacks to watch changes.
-		void ICacher::Setup(__internal::IQuery& q)
+		void ICacher::Setup(Internal::IQuery& q)
 		{
 			if (aids->empty())
 				return; // early quit.
@@ -872,11 +872,11 @@ namespace TinyECS
 		{
 			if (filters.empty())
 				return;
-			using Callback = __internal::CallbackOnIndexValueUpdated;
-			using Index = __internal::IFieldIndexRoot;
+			using Callback = Internal::CallbackOnIndexValueUpdated;
+			using Index = Internal::IFieldIndexRoot;
 			Callback onIndexUpdated = [this](const Index* idx, EntityId eid) {
 				// Must be alive in any of our archetypes.
-				ArchetypeId aid = __internal::UnpackX(eid);
+				ArchetypeId aid = Internal::UnpackX(eid);
 				auto		it = archetypes.find(aid);
 				if (it == archetypes.end())
 					return;
@@ -890,7 +890,7 @@ namespace TinyECS
 					auto a = it->second; // *IArchetype
 
 					// Copy into cache container.
-					this->Insert(eid, a->UncheckedGet(__internal::UnpackY(eid)));
+					this->Insert(eid, a->UncheckedGet(Internal::UnpackY(eid)));
 				}
 				else // Miss, remove
 					this->Erase(eid);
@@ -948,6 +948,6 @@ namespace TinyECS
 				reversed);
 		}
 
-	} // namespace __internal
+	} // namespace Internal
 
 } // namespace TinyECS

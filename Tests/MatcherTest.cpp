@@ -6,13 +6,13 @@
 using namespace TinyECS;
 using namespace TinyECS_Tests;
 template <typename... Components>
-using _CS = __internal::ComponentSequence<Components...>;
-using TinyECS::__internal::AIds;
-using TinyECS::__internal::MatchRelation;
+using _CS = Internal::ComponentSequence<Components...>;
+using TinyECS::Internal::AIds;
+using TinyECS::Internal::MatchRelation;
 
 TEST_CASE("matcher", "[simple]")
 {
-	__internal::Matcher m;
+	Internal::Matcher m;
 	m.PutArchetypeId(_CS<A, B, C>::GetSignature(), 1);
 
 	REQUIRE(m.Match(MatchRelation::ALL, _CS<A>::GetSignature()).size());
@@ -38,7 +38,7 @@ TEST_CASE("matcher", "[simple]")
 
 TEST_CASE("matcher", "[multiple]")
 {
-	__internal::Matcher m;
+	Internal::Matcher m;
 
 	m.PutArchetypeId(_CS<C, A, B>::GetSignature(), 1);
 	m.PutArchetypeId(_CS<A, B>::GetSignature(), 2);
@@ -68,7 +68,7 @@ TEST_CASE("matcher", "[multiple]")
 
 TEST_CASE("archetype m", "[bugfix 1]")
 {
-	__internal::Matcher m;
+	Internal::Matcher m;
 	m.PutArchetypeId(_CS<D, E, F>::GetSignature(), 1);
 	REQUIRE(m.Match(MatchRelation::ALL, _CS<D, F>::GetSignature()) == AIds{ 1 });
 }

@@ -19,8 +19,8 @@ TEST_CASE("archetype/1", "[simple]")
 	auto& ref = a.NewEntity();
 	auto  eid = ref.GetId();
 
-	REQUIRE(__internal::UnpackX(eid) == a.GetId());
-	REQUIRE(__internal::UnpackY(eid) == 0);
+	REQUIRE(Internal::UnpackX(eid) == a.GetId());
+	REQUIRE(Internal::UnpackY(eid) == 0);
 
 	REQUIRE(ref.IsAlive());
 	REQUIRE(w.IsAlive(eid));
@@ -177,10 +177,10 @@ TEST_CASE("archetype/8", "[reserve]")
 	REQUIRE(a.NumBlocks() == 3);
 	REQUIRE(a.NumEntities() == 2049);
 	// Test functions should keep working.
-	REQUIRE(w.Get(__internal::Pack(a.GetId(), 2048)).IsAlive());
-	REQUIRE(w.Get(__internal::Pack(a.GetId(), 2047)).IsAlive());
-	REQUIRE(w.Get(__internal::Pack(a.GetId(), 0)).IsAlive());
-	auto e = w.Get(__internal::Pack(a.GetId(), 1023));
+	REQUIRE(w.Get(Internal::Pack(a.GetId(), 2048)).IsAlive());
+	REQUIRE(w.Get(Internal::Pack(a.GetId(), 2047)).IsAlive());
+	REQUIRE(w.Get(Internal::Pack(a.GetId(), 0)).IsAlive());
+	auto e = w.Get(Internal::Pack(a.GetId(), 1023));
 	REQUIRE(e.Get<A>().y == 1);
 	e.Get<A>().x = 33;
 	REQUIRE(e.Get<A>().x == 33);

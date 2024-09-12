@@ -11,17 +11,17 @@ TEST_CASE("pack/unpack", "[basic]")
 	ArchetypeId	  aid = 123;
 	EntityShortId eshorId = 34567;
 	EntityId	  eid = 64521991;
-	REQUIRE(__internal::Pack(aid, eshorId) == eid);
-	REQUIRE(__internal::UnpackX(eid) == aid);
-	REQUIRE(__internal::UnpackY(eid) == eshorId);
+	REQUIRE(Internal::Pack(aid, eshorId) == eid);
+	REQUIRE(Internal::UnpackX(eid) == aid);
+	REQUIRE(Internal::UnpackY(eid) == eshorId);
 
-	REQUIRE(__internal::Pack(0b1111, 0b11) == 0b11110000000000000000011);
-	REQUIRE(__internal::UnpackX(0b11110000000000000000011) == 0b1111);
-	REQUIRE(__internal::UnpackY(0b11110000000000000000011) == 0b11);
+	REQUIRE(Internal::Pack(0b1111, 0b11) == 0b11110000000000000000011);
+	REQUIRE(Internal::UnpackX(0b11110000000000000000011) == 0b1111);
+	REQUIRE(Internal::UnpackY(0b11110000000000000000011) == 0b11);
 
-	REQUIRE(__internal::Pack(8191, 524287) == 0xffffffff);
-	REQUIRE(__internal::UnpackX(0xffffffff) == 8191);
-	REQUIRE(__internal::UnpackY(0xffffffff) == 524287);
+	REQUIRE(Internal::Pack(8191, 524287) == 0xffffffff);
+	REQUIRE(Internal::UnpackX(0xffffffff) == 8191);
+	REQUIRE(Internal::UnpackY(0xffffffff) == 524287);
 }
 
 TEST_CASE("pack/unpack",
@@ -33,7 +33,7 @@ TEST_CASE("pack/unpack",
 	for (auto aid : aids)
 	{
 		for (auto shortId : shortIds)
-			eids.push_back(__internal::Pack(aid, shortId));
+			eids.push_back(Internal::Pack(aid, shortId));
 	}
 	std::sort(eids.begin(), eids.end());
 	int k = 0;
@@ -41,7 +41,7 @@ TEST_CASE("pack/unpack",
 	{
 		for (int j = 0; j < shortIds.size(); j++)
 		{
-			REQUIRE(__internal::Pack(aids[i], shortIds[j]) == eids[k++]);
+			REQUIRE(Internal::Pack(aids[i], shortIds[j]) == eids[k++]);
 		}
 	}
 }

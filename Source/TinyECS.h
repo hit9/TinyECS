@@ -50,16 +50,16 @@ namespace TinyECS
 
 	class EntityReference;
 
-	namespace __internal
-	{ // DO NOT USE NAMES FROM __internal
+	namespace Internal
+	{ // DO NOT USE NAMES FROM Internal
 		class ICacher;
 		class IQuery;
 		class IArchetype;
-	} // namespace __internal
+	} // namespace Internal
 
-	namespace __internal
+	namespace Internal
 	{
-		// DO NOT USE NAMES FROM __internal
+		// DO NOT USE NAMES FROM Internal
 
 		using AIds = std::unordered_set<ArchetypeId>; // unordered set of archetype ids.
 		using AIdsPtr = std::shared_ptr<AIds>;		  // shared pointer to a set of archetype ids.
@@ -134,7 +134,7 @@ namespace TinyECS
 				return signature;
 			}
 		};
-	} // namespace __internal
+	} // namespace Internal
 
 	//////////////////////////
 	/// EntityReference
@@ -146,7 +146,7 @@ namespace TinyECS
 	// AccessorUntil is the Accessor that stops the iteration earlier once the callback returns true.
 	using AccessorUntil = std::function<bool(EntityReference&)>;
 
-	namespace __internal
+	namespace Internal
 	{
 		// Archetype api for EntityReference.
 		class IArchetypeEntityApi
@@ -177,13 +177,13 @@ namespace TinyECS
 			friend EntityReference;
 		};
 
-	} // namespace __internal
+	} // namespace Internal
 
 	// A temporary reference to an entity's data, we should keep it lightweight enough.
 	class EntityReference
 	{
 	private:
-		__internal::IArchetypeEntityApi* a = nullptr;
+		Internal::IArchetypeEntityApi* a = nullptr;
 
 		// Internal note: although there's an entity reference stored in the archetype, at the head of this entity's
 		// data row. But we still need to store an address of the data rather than casting pointer `this` to get the
@@ -192,10 +192,10 @@ namespace TinyECS
 		EntityId	   id = 0;
 
 	public:
-		EntityReference(__internal::IArchetypeEntityApi* a, unsigned char* data, EntityId id)
+		EntityReference(Internal::IArchetypeEntityApi* a, unsigned char* data, EntityId id)
 			: a(a), data(data), id(id) {}
 
-		EntityReference() = default; // for __internal::NullEntityReference
+		EntityReference() = default; // for Internal::NullEntityReference
 
 		~EntityReference() = default;
 
@@ -222,23 +222,23 @@ namespace TinyECS
 		}
 
 		// Kill this entity right now.
-		inline void Kill() { a->Kill(__internal::UnpackY(id), nullptr); }
+		inline void Kill() { a->Kill(Internal::UnpackY(id), nullptr); }
 
 		// Mark this entity to be killed later.
 		// Finally we should call world.ApplyDelayedKills() to make it take effect.
-		inline void DelayedKill() { a->DelayedKill(__internal::UnpackY(id), nullptr); }
+		inline void DelayedKill() { a->DelayedKill(Internal::UnpackY(id), nullptr); }
 
 		// DelayedKill with a hook function to be called before this entity is applied killed.
 		// No matter whether the `beforeKilled` function is provided, the destructor of each component of this
 		// entity is going to be called on this entity's death.
-		inline void DelayedKill(Accessor& beforeKilled) { a->DelayedKill(__internal::UnpackY(id), &beforeKilled); }
+		inline void DelayedKill(Accessor& beforeKilled) { a->DelayedKill(Internal::UnpackY(id), &beforeKilled); }
 
 		inline void DelayedKill(Accessor&& beforeKilled) { DelayedKill(beforeKilled); }
 
 		// Returns true if this entity is alive.
 		// For delay created entity, it's not alive until a world.ApplyDelayedNewEntities() is called.
 		// For delay killed entity, it's still alive until a world.ApplyDelayedKills() is called.
-		inline bool IsAlive(void) const { return a != nullptr && a->IsAlive(__internal::UnpackY(id)); }
+		inline bool IsAlive(void) const { return a != nullptr && a->IsAlive(Internal::UnpackY(id)); }
 
 		// Constructs a component of this entity.
 		// The component class must have a corresponding constructor.
@@ -255,8 +255,8 @@ namespace TinyECS
 	/// IArchetype
 	//////////////////////////
 
-	namespace __internal
-	{ // DO NOT USE NAMES FROM __internal
+	namespace Internal
+	{ // DO NOT USE NAMES FROM Internal
 
 		// Internal World interface class.
 		class IWorld
@@ -555,18 +555,18 @@ namespace TinyECS
 			ArchetypeIdBitset MatchAny(const Signature& signature) const;
 			ArchetypeIdBitset MatchNone(const Signature& signature) const;
 		};
-	} // namespace __internal
+	} // namespace Internal
 
 	//////////////////////////
 	/// Archetype Impl
 	//////////////////////////
 
 	template <typename... Components>
-	class Archetype : public __internal::IArchetype
+	class Archetype : public Internal::IArchetype
 	{
 	public:
-		Archetype(ArchetypeId id, __internal::IWorld* w)
-			: __internal::IArchetype(id, w, CS::N, CellSize, CS::GetSignature()) {}
+		Archetype(ArchetypeId id, Internal::IWorld* w)
+			: Internal::IArchetype(id, w, CS::N, CellSize, CS::GetSignature()) {}
 
 	protected:
 		friend World; // for GetSignature
@@ -576,7 +576,7 @@ namespace TinyECS
 		void ConstructComponents(unsigned char* data) override { (ConstructComponent<Components>(data), ...); }
 
 	private:
-		using CS = __internal::ComponentSequence<Components...>;
+		using CS = Internal::ComponentSequence<Components...>;
 		static_assert(CS::N, "TinyECS: Archetype requires at least one component type parameter");
 
 		// CellSize is the max size of { components 's sizes, entity reference size }
@@ -593,22 +593,22 @@ namespace TinyECS
 	/// World
 	//////////////////////////
 
-	namespace __internal
+	namespace Internal
 	{
 		using CallbackEntityLifecycle = std::function<void(EntityReference&)>; // internal callback
-	} // namespace __internal
+	} // namespace Internal
 
 	// CallbackAfterEntityCreated is a function to be executed right after an entity is created.
-	using CallbackAfterEntityCreated = __internal::CallbackEntityLifecycle;
+	using CallbackAfterEntityCreated = Internal::CallbackEntityLifecycle;
 
 	// CallbackBeforeEntityRemoved is a function to be executed right before an entity is removing.
-	using CallbackBeforeEntityRemoved = __internal::CallbackEntityLifecycle;
+	using CallbackBeforeEntityRemoved = Internal::CallbackEntityLifecycle;
 
-	class World : public __internal::IWorld
+	class World : public Internal::IWorld
 	{
 	public:
 		World()
-			: matcher(std::make_unique<__internal::Matcher>()) {};
+			: matcher(std::make_unique<Internal::Matcher>()) {};
 		~World() = default;
 
 		// Creates a new archetype, returns the reference.
@@ -687,17 +687,17 @@ namespace TinyECS
 
 		void AddDelayedNewEntity(ArchetypeId a, EntityShortId e) override
 		{
-			toBorn.push_back(__internal::Pack(a, e));
+			toBorn.push_back(Internal::Pack(a, e));
 		}
 
 		void AddDelayedKillEntity(ArchetypeId a, EntityShortId e) override
 		{
-			toKill.push_back(__internal::Pack(a, e));
+			toKill.push_back(Internal::Pack(a, e));
 		}
 
 	private:
-		std::vector<std::unique_ptr<__internal::IArchetype>> archetypes;
-		std::unique_ptr<__internal::Matcher>				 matcher;
+		std::vector<std::unique_ptr<Internal::IArchetype>> archetypes;
+		std::unique_ptr<Internal::Matcher>				 matcher;
 
 		// We should respect to the order of DelayedXXX calls, in case of possible entity dependency relations.
 		std::deque<EntityId> toBorn, toKill;
@@ -705,11 +705,11 @@ namespace TinyECS
 		/// ~~~~~~~~~~ Callback ~~~~~~~~~~~~~~~~~
 		struct Callback
 		{
-			using Func = __internal::CallbackEntityLifecycle;
+			using Func = Internal::CallbackEntityLifecycle;
 			uint32_t				  id = 0;
 			int						  flag; // 0: AfterEntityCreated, 1: BeforeEntityRemoved
 			Func					  func;
-			const __internal::AIdsPtr aids; // stored in matcher.
+			const Internal::AIdsPtr aids; // stored in matcher.
 		};
 
 		uint32_t nextCallbackId = 0;
@@ -722,7 +722,7 @@ namespace TinyECS
 		// Purpose: redundancy for performant triggering callbacks
 		std::vector<std::vector<const Callback*>> callbackTable[2];
 
-		uint32_t PushCallback(int flag, const __internal::AIdsPtr aids, const Callback::Func& func);
+		uint32_t PushCallback(int flag, const Internal::AIdsPtr aids, const Callback::Func& func);
 
 		void TriggerCallbacks(ArchetypeId aid, EntityShortId e, int flag);
 
@@ -731,18 +731,18 @@ namespace TinyECS
 		{
 			if (archetypes.empty())
 				throw std::runtime_error("TinyECS: callbacks should register **after** all archetypes are created");
-			using __internal::MatchRelation;
-			using CS = __internal::ComponentSequence<Components...>;
+			using Internal::MatchRelation;
+			using CS = Internal::ComponentSequence<Components...>;
 			const auto aids = matcher->MatchAndStore(MatchRelation::ALL, CS::GetSignature());
 			return PushCallback(flag, aids, func);
 		}
 
-		friend __internal::IQuery;	// for matcher
-		friend __internal::ICacher; // for push & remove callbacks
+		friend Internal::IQuery;	// for matcher
+		friend Internal::ICacher; // for push & remove callbacks
 	};
 
-	namespace __internal
-	{ // DO NOT USE NAMES FROM __internal
+	namespace Internal
+	{ // DO NOT USE NAMES FROM Internal
 
 		//////////////////////////
 		/// Filter
@@ -1007,9 +1007,9 @@ namespace TinyECS
 		};
 
 		template <typename Value, typename TMap, typename TIterator = TMap::iterator>
-		class MapBasedFieldIndex : virtual public __internal::IFieldIndexFilterApi<Value>, // virtual inherit root: IFieldIndexRoot
-								   public __internal::IFieldIndex,
-								   public __internal::IFieldIndexImpl<Value, TMap, TIterator>
+		class MapBasedFieldIndex : virtual public Internal::IFieldIndexFilterApi<Value>, // virtual inherit root: IFieldIndexRoot
+								   public Internal::IFieldIndex,
+								   public Internal::IFieldIndexImpl<Value, TMap, TIterator>
 		{
 		public:
 			using Container = TMap;
@@ -1091,14 +1091,14 @@ namespace TinyECS
 			}
 		};
 
-	} // namespace __internal
+	} // namespace Internal
 
 	// UnorderedFieldIndex is an unordered_ index (hash) index, based on std::unordered_multimap.
 	// Time complexity: Erase, Insert, Update => O(1)
 	template <typename Value>
 	class UnorderedFieldIndex // virtual inherit root: IFieldIndexRoot
-		: virtual public __internal::IFieldIndexOperators<Value>,
-		  virtual public __internal::MapBasedFieldIndex<Value, std::unordered_multimap<Value, EntityId>, typename std::unordered_multimap<Value, EntityId>::iterator>
+		: virtual public Internal::IFieldIndexOperators<Value>,
+		  virtual public Internal::MapBasedFieldIndex<Value, std::unordered_multimap<Value, EntityId>, typename std::unordered_multimap<Value, EntityId>::iterator>
 	{
 	};
 
@@ -1106,11 +1106,11 @@ namespace TinyECS
 	// Time complexity: Erase, Insert, Update => O(logN)
 	template <typename Value>
 	class OrderedFieldIndex // virtual inherit root: IFieldIndexRoot
-		: virtual public __internal::OrderedIFieldIndexFilterApi<Value>,
-		  virtual public __internal::OrderedIFieldIndexOperators<Value>,
-		  virtual public __internal::MapBasedFieldIndex<Value, std::multimap<Value, EntityId>, typename std::multimap<Value, EntityId>::iterator>
+		: virtual public Internal::OrderedIFieldIndexFilterApi<Value>,
+		  virtual public Internal::OrderedIFieldIndexOperators<Value>,
+		  virtual public Internal::MapBasedFieldIndex<Value, std::multimap<Value, EntityId>, typename std::multimap<Value, EntityId>::iterator>
 	{
-		using CallbackFilter = __internal::CallbackFilter;
+		using CallbackFilter = Internal::CallbackFilter;
 
 	protected:
 		// ~~~~~~~~ Impl IFieldIndexFilterApi ~~~~~~~~~~~~~
@@ -1176,7 +1176,7 @@ namespace TinyECS
 	/// FieldProxy
 	//////////////////////////
 
-	namespace __internal
+	namespace Internal
 	{
 
 		// FieldProxy wraps a component field to be used as a query index.
@@ -1265,18 +1265,18 @@ namespace TinyECS
 			return v != fd.GetValue();
 		}
 
-	} // namespace __internal
+	} // namespace Internal
 
 	template <typename Value, typename TFieldIndex> // Normal FieldProxy
-	struct FieldProxy : public __internal::FieldProxyBase<Value, TFieldIndex>
+	struct FieldProxy : public Internal::FieldProxyBase<Value, TFieldIndex>
 	{
-		using __internal::FieldProxyBase<Value, TFieldIndex>::FieldProxyBase;
+		using Internal::FieldProxyBase<Value, TFieldIndex>::FieldProxyBase;
 	};
 
 	template <std::integral Value, typename TFieldIndex> // Integral FieldProxy
-	struct FieldProxy<Value, TFieldIndex> : public __internal::FieldProxyBase<Value, TFieldIndex>
+	struct FieldProxy<Value, TFieldIndex> : public Internal::FieldProxyBase<Value, TFieldIndex>
 	{
-		using __internal::FieldProxyBase<Value, TFieldIndex>::FieldProxyBase;
+		using Internal::FieldProxyBase<Value, TFieldIndex>::FieldProxyBase;
 		operator bool() const { return this->value; }
 		bool		operator!() { return !(this->value); }
 		bool		operator<(const Value& v) const { return this->value < v; }
@@ -1333,16 +1333,16 @@ namespace TinyECS
 		return v >= fd.GetValue();
 	}
 
-	namespace __internal
+	namespace Internal
 	{
 		template <class T>
 		concept String = std::is_convertible_v<T, std::string>;
-	} // namespace __internal
+	} // namespace Internal
 
-	template <__internal::String Value, typename TFieldIndex> // String FieldProxy
-	struct FieldProxy<Value, TFieldIndex> : public __internal::FieldProxyBase<Value, TFieldIndex>
+	template <Internal::String Value, typename TFieldIndex> // String FieldProxy
+	struct FieldProxy<Value, TFieldIndex> : public Internal::FieldProxyBase<Value, TFieldIndex>
 	{
-		using Base = __internal::FieldProxyBase<Value, TFieldIndex>;
+		using Base = Internal::FieldProxyBase<Value, TFieldIndex>;
 		using Base::FieldProxyBase;
 
 		template <size_t N>
@@ -1365,15 +1365,15 @@ namespace TinyECS
 	};
 
 	// Type of a vector of filter pointers.
-	using Filter = std::shared_ptr<const __internal::IFilter>;
+	using Filter = std::shared_ptr<const Internal::IFilter>;
 	using Filters = std::vector<Filter>;
 
 	//////////////////////////
 	/// Cacher
 	//////////////////////////
 
-	namespace __internal
-	{ // DO NOT USE NAMES FROM __internal
+	namespace Internal
+	{ // DO NOT USE NAMES FROM Internal
 
 		class ICacher
 		{
@@ -1611,7 +1611,7 @@ namespace TinyECS
 		template <MatchRelation Relation, typename... Components>
 		class QueryImpl : public IQuery
 		{
-			using CS = __internal::ComponentSequence<Components...>;
+			using CS = Internal::ComponentSequence<Components...>;
 
 		public:
 			static_assert(!(Relation == MatchRelation::ALL && CS::N == 0),
@@ -1635,20 +1635,20 @@ namespace TinyECS
 			}
 		};
 
-	} // namespace __internal
+	} // namespace Internal
 
 	// Query entities matching all of given list of components.
 	template <typename... Components>
-	using Query = __internal::QueryImpl<__internal::MatchRelation::ALL, Components...>;
+	using Query = Internal::QueryImpl<Internal::MatchRelation::ALL, Components...>;
 
 	// Query entities matching any of given list of components.
 	// Use QueryAny<> to query arbitrary components, to iterate every entity in the world.
 	template <typename... Components>
-	using QueryAny = __internal::QueryImpl<__internal::MatchRelation::ANY, Components...>;
+	using QueryAny = Internal::QueryImpl<Internal::MatchRelation::ANY, Components...>;
 
 	// Query entities matching none of given list of components.
 	template <typename... Components>
-	using QueryNone = __internal::QueryImpl<__internal::MatchRelation::NONE, Components...>;
+	using QueryNone = Internal::QueryImpl<Internal::MatchRelation::NONE, Components...>;
 
 } // namespace TinyECS
 

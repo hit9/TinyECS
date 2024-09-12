@@ -91,17 +91,17 @@ namespace TinyECS_Tests
 	};
 
 	// Guarantee A, B, C, D's id is 0,1,2,3 on this file's first included
-	static const auto ID_A = __internal::IComponent<A>::GetId();
-	static const auto ID_B = __internal::IComponent<B>::GetId();
-	static const auto ID_C = __internal::IComponent<C>::GetId();
-	static const auto ID_D = __internal::IComponent<D>::GetId();
-	static const auto ID_E = __internal::IComponent<E>::GetId();
-	static const auto ID_F = __internal::IComponent<F>::GetId();
-	static const auto ID_G = __internal::IComponent<G>::GetId();
-	static const auto ID_H = __internal::IComponent<H>::GetId();
-	static const auto ID_I = __internal::IComponent<I>::GetId();
-	static const auto ID_J = __internal::IComponent<J>::GetId();
-	static const auto ID_K = __internal::IComponent<K>::GetId();
+	static const auto ID_A = Internal::IComponent<A>::GetId();
+	static const auto ID_B = Internal::IComponent<B>::GetId();
+	static const auto ID_C = Internal::IComponent<C>::GetId();
+	static const auto ID_D = Internal::IComponent<D>::GetId();
+	static const auto ID_E = Internal::IComponent<E>::GetId();
+	static const auto ID_F = Internal::IComponent<F>::GetId();
+	static const auto ID_G = Internal::IComponent<G>::GetId();
+	static const auto ID_H = Internal::IComponent<H>::GetId();
+	static const auto ID_I = Internal::IComponent<I>::GetId();
+	static const auto ID_J = Internal::IComponent<J>::GetId();
+	static const auto ID_K = Internal::IComponent<K>::GetId();
 
 #define SETUP_INDEX               \
 	do                            \
