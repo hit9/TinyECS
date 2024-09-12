@@ -14,6 +14,6 @@ clean:
 
 lint:
 	cppcheck . --enable=warning,style,performance,portability\
-		--inline-suppr --language=c++ --std=c++20 -i main.cc -i build -i tests
+		--inline-suppr --language=c++ --std=c++20 -i main.cpp -i build -i tests
 
 .PHONY: build

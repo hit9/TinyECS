@@ -5,11 +5,14 @@ cmake:
 		-DCMAKE_BUILD_TYPE=Release \
 		-DCMAKE_EXPORT_COMPILE_COMMANDS=1
 
-build: cmake
+build:
+	@if [ ! -d build ]; then \
+		$(MAKE) cmake; \
+	fi
 	cd build && make
 
 run:
-	./build/tinyecs_example
+	./build/Tinyecs_Example
 
 clean:
 	make -C build clean

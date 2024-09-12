@@ -1,13 +1,13 @@
 cmake_minimum_required(VERSION 3.10)
 
-project(tinyecs)
+project(TinyECS)
 
 set(CMAKE_CXX_STANDARD 20)
 
-add_library(tinyecs SHARED tinyecs.cc)
-set_target_properties(tinyecs PROPERTIES PUBLIC_HEADER "tinyecs.h")
+add_library(TinyECS SHARED TinyECS.cpp)
+set_target_properties(TinyECS PROPERTIES PUBLIC_HEADER "TinyECS.h")
 
 install(
-  TARGETS tinyecs
+  TARGETS TinyECS
   LIBRARY DESTINATION ${CMAK_INSTALL_LIBDIR}
   PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
