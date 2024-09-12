@@ -1,9 +1,14 @@
 // Copyright (c) 2024 Chao Wang <hit9@icloud.com>.
-// License: BSD. https://github.com/hit9/tinyecs
+// License: BSD. https://github.com/hit9/TinyECS
 // Requirements: at least C++20. Version: 0.1.0
 
-#ifndef __HIT9_TINYECS_H
-#define __HIT9_TINYECS_H
+// Changes
+// ~~~~~~~
+// v0.2.0: Breaking Change: Refactor (most) coding style to ue.
+// v0.1.0: First Release.
+
+#ifndef TINYECS_H
+#define TINYECS_H
 
 #include <algorithm>	 // std::max
 #include <bitset>		 // std::bitset
@@ -24,7 +29,7 @@
 #include <utility>		 // std::pair
 #include <vector>		 // std::vector
 
-namespace tinyecs
+namespace TinyECS
 {
 
 	static const size_t MaxNumEntitiesPerBlock = 1024;
@@ -83,7 +88,7 @@ namespace tinyecs
 		class IComponentBase
 		{
 		protected:
-			static ComponentId NextId; // initialized in tinyecs.cc
+			static ComponentId NextId; // initialized in TinyECS.cc
 		};
 
 		template <typename Component>
@@ -572,7 +577,7 @@ namespace tinyecs
 
 	private:
 		using CS = __internal::ComponentSequence<Components...>;
-		static_assert(CS::N, "tinyecs: Archetype requires at least one component type parameter");
+		static_assert(CS::N, "TinyECS: Archetype requires at least one component type parameter");
 
 		// CellSize is the max size of { components 's sizes, entity reference size }
 		static constexpr size_t CellSize = std::max(CS::MaxComponentSize, sizeof(EntityReference));
@@ -725,7 +730,7 @@ namespace tinyecs
 		uint32_t PushCallbackByComponents(const Callback::Func& func, int flag)
 		{
 			if (archetypes.empty())
-				throw std::runtime_error("tinyecs: callbacks should register **after** all archetypes are created");
+				throw std::runtime_error("TinyECS: callbacks should register **after** all archetypes are created");
 			using __internal::MatchRelation;
 			using CS = __internal::ComponentSequence<Components...>;
 			const auto aids = matcher->MatchAndStore(MatchRelation::ALL, CS::GetSignature());
@@ -1205,7 +1210,7 @@ namespace tinyecs
 			void BindIndex(TFieldIndex* idx)
 			{
 				if (idx == nullptr)
-					throw std::runtime_error("tinyecs: cannot bind nullptr index to field");
+					throw std::runtime_error("TinyECS: cannot bind nullptr index to field");
 				if (__index != nullptr)
 					return; // idempotent
 				__index = idx;
@@ -1237,7 +1242,7 @@ namespace tinyecs
 			FieldProxyBase& Set(const Value& v)
 			{
 				if (__index == nullptr)
-					throw std::runtime_error("tinyecs: FieldProxy's BindIndex function may not run");
+					throw std::runtime_error("TinyECS: FieldProxy's BindIndex function may not run");
 				// this entity is unbounded with the world, we shouldn't update it.
 				if (__it == __index->End())
 					return *this;
@@ -1610,9 +1615,9 @@ namespace tinyecs
 
 		public:
 			static_assert(!(Relation == MatchRelation::ALL && CS::N == 0),
-				"tinyecs: Query requires at least one component type parameter");
+				"TinyECS: Query requires at least one component type parameter");
 			static_assert(!(Relation == MatchRelation::NONE && CS::N == 0),
-				"tinyecs: QueryNone requires at least one component type parameter");
+				"TinyECS: QueryNone requires at least one component type parameter");
 
 			explicit QueryImpl(World& world)
 				: IQuery(world, Relation, CS::GetSignature()) {}
@@ -1645,6 +1650,6 @@ namespace tinyecs
 	template <typename... Components>
 	using QueryNone = __internal::QueryImpl<__internal::MatchRelation::NONE, Components...>;
 
-} // namespace tinyecs
+} // namespace TinyECS
 
 #endif

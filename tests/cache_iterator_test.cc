@@ -1,10 +1,10 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "shares.h"
-#include "tinyecs.h"
+#include "TinyECS.h"
 
-using namespace tinyecs;
-using namespace tinyecs_tests;
+using namespace TinyECS;
+using namespace TinyECS_Tests;
 
 TEST_CASE("cache_iterator")
 {

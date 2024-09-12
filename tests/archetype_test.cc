@@ -4,10 +4,10 @@
 #include <stdexcept>
 
 #include "shares.h"
-#include "tinyecs.h"
+#include "TinyECS.h"
 
-using namespace tinyecs;
-using namespace tinyecs_tests;
+using namespace TinyECS;
+using namespace TinyECS_Tests;
 
 TEST_CASE("archetype/1", "[simple]")
 {

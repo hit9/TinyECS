@@ -1,14 +1,14 @@
 // Copyright (c) 2024 Chao Wang <hit9@icloud.com>.
-// License: BSD. https://github.com/hit9/tinyecs
+// License: BSD. https://github.com/hit9/TinyECS
 // Requirements: at least C++20.
 
 #include <algorithm> // std::fill_n, std::sort
 #include <cstdlib>	 // std::ldiv
 #include <set>		 // std::set
 
-#include "tinyecs.h"
+#include "TinyECS.h"
 
-namespace tinyecs
+namespace TinyECS
 {
 
 	namespace __internal
@@ -137,7 +137,7 @@ namespace tinyecs
 		{
 			auto col = cols[cid];
 			if (col == 0xffff)
-				throw std::runtime_error("tinyecs: component of archetype " + std::to_string(id) + " not found");
+				throw std::runtime_error("TinyECS: component of archetype " + std::to_string(id) + " not found");
 			return entityData + col * cellSize;
 		}
 
@@ -630,7 +630,7 @@ namespace tinyecs
 			if (ready)
 				return *this;
 			if (world.archetypes.empty())
-				throw std::runtime_error("tinyecs: query PreMatch must be called after archetypes are all created");
+				throw std::runtime_error("TinyECS: query PreMatch must be called after archetypes are all created");
 
 			aids = world.matcher->MatchAndStore(relation, signature);
 			const auto& aidSet = *aids;
@@ -791,7 +791,7 @@ namespace tinyecs
 		void IQuery::ForEachUntil(const AccessorUntil& cb, bool reversed)
 		{
 			if (!ready)
-				throw std::runtime_error("tinyecs: Query PreMatch not called");
+				throw std::runtime_error("TinyECS: Query PreMatch not called");
 			if (archetypes.empty())
 				return; // early quit.
 			if (filters.empty())
@@ -950,4 +950,4 @@ namespace tinyecs
 
 	} // namespace __internal
 
-} // namespace tinyecs
+} // namespace TinyECS

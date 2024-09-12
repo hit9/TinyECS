@@ -2,9 +2,9 @@
 #include <catch2/catch_test_macros.hpp>
 #include <vector>
 
-#include "tinyecs.h"
+#include "TinyECS.h"
 
-using namespace tinyecs;
+using namespace TinyECS;
 
 TEST_CASE("pack/unpack", "[basic]")
 {
